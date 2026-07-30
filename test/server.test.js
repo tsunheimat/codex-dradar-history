@@ -125,6 +125,25 @@ test('GET /deng/ serves the patched deng page', async () => {
   assert.ok(html.includes('data-feed="deng:html"'), 'timebar bound to deng feed');
 });
 
+test('GET /deng (no trailing slash) redirects to /deng/ so relative assets resolve', async () => {
+  const r = await fetch(`${base}/deng`, { redirect: 'manual' });
+  assert.equal(r.status, 301);
+  assert.equal(r.headers.get('location'), '/deng/');
+  // Query (?at=) is preserved across the redirect.
+  const withAt = await fetch(`${base}/deng?at=2026-07-20T00:00:00.000Z`, { redirect: 'manual' });
+  assert.equal(withAt.status, 301);
+  assert.equal(withAt.headers.get('location'), '/deng/?at=2026-07-20T00:00:00.000Z');
+});
+
+test('GET /deng/assets/radar-report.js is patched to the local /deng-api mount', async () => {
+  const r = await fetch(`${base}/deng/assets/radar-report.js`);
+  assert.equal(r.status, 200);
+  const js = await r.text();
+  assert.ok(js.includes('location.origin + "/deng-api"'), 'apiRoot rewritten to local mount');
+  assert.ok(!js.includes('api.codexradar.com'), 'no live upstream host served');
+  assert.ok(!js.includes('127.0.0.1:8399'), 'no dead dev-port served');
+});
+
 test('GET /deng-api/api/v1/table returns the exact fixture bytes', async () => {
   const r = await fetch(`${base}/deng-api/api/v1/table`);
   assert.equal(r.status, 200);

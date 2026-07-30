@@ -27,7 +27,9 @@
   if (nativeFetch && !LIVE) {
     window.fetch = function (input, init) {
       try {
-        var href = typeof input === "string" ? input : input && input.url;
+        // A WHATWG URL object exposes .href (NOT .url); a Request exposes .url.
+        var isUrlObj = typeof URL !== "undefined" && input instanceof URL;
+        var href = typeof input === "string" ? input : isUrlObj ? input.href : input && input.url;
         if (href) {
           var u = new URL(href, location.href);
           if (
@@ -36,7 +38,8 @@
             !u.searchParams.has("at")
           ) {
             u.searchParams.set("at", AT);
-            if (typeof input === "string") {
+            if (typeof input === "string" || isUrlObj) {
+              // string or URL input: no init to preserve, pass the rewritten URL.
               input = u.toString();
             } else {
               input = new Request(u.toString(), input);

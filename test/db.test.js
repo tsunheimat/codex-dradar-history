@@ -180,6 +180,85 @@ test('runs audit + pruneRuns + feed_state upsert', () => {
   } finally { done(dir, archive); }
 });
 
+test('upsertIqPoints: returns NEWLY INSERTED count only, still persists revisions', () => {
+  const { dir, archive } = tmpArchive();
+  try {
+    const T16 = '2026-07-30T16:00:00.000Z';
+    const T15 = '2026-07-30T15:00:00.000Z';
+    // Two fresh points → 2 inserts.
+    assert.equal(archive.upsertIqPoints([
+      { series: 's', ts: T16, score: 92.7, n: 2001 },
+      { series: 's', ts: T15, score: 90.0, n: 3000 },
+    ]), 2);
+    // Byte-identical re-poll → 0 (idempotent).
+    assert.equal(archive.upsertIqPoints([
+      { series: 's', ts: T16, score: 92.7, n: 2001 },
+      { series: 's', ts: T15, score: 90.0, n: 3000 },
+    ]), 0);
+    // Revision of the current in-progress hour (score/n move) inserts NOTHING new
+    // — the return value must not count the update as a new point (SPEC §2/§5).
+    assert.equal(archive.upsertIqPoints([{ series: 's', ts: T16, score: 92.8, n: 2050 }]), 0);
+    // …but the revision is still persisted.
+    const rows = archive.queryIqSeries({ series: ['s'], fromIso: '2000-01-01T00:00:00.000Z', toIso: '2100-01-01T00:00:00.000Z' }).series.s;
+    assert.equal(rows.length, 2, 'no phantom row added by the revision');
+    const cur = rows.find((r) => r.ts === T16);
+    assert.equal(cur.score, 92.8);
+    assert.equal(cur.n, 2050);
+    // A mix of one revision + one brand-new point → exactly 1 insert.
+    assert.equal(archive.upsertIqPoints([
+      { series: 's', ts: T16, score: 92.9, n: 2100 },
+      { series: 's', ts: '2026-07-30T17:00:00.000Z', score: 93.0, n: 100 },
+    ]), 1);
+  } finally { done(dir, archive); }
+});
+
+test('queryEvents: free-text q escapes LIKE wildcards (literal _ and %)', () => {
+  const { dir, archive } = tmpArchive();
+  try {
+    const mk = (taskId, nickname) => ({
+      gradedAt: '2026-07-30T10:00:00.000Z', taskId, model: 'gpt', effort: 'low',
+      nickname, passed: 1, costUsd: 0.1, costSource: 'x', costIsEstimate: 0, points: 1, avatarSeed: 's-' + taskId,
+    });
+    archive.insertEvents([mk('aXb', 'n1'), mk('acb', 'n2'), mk('azzb', 'n3'), mk('plain', 'n4'), mk('a%b', 'pct')]);
+    // '_' must be a literal underscore, not a single-char wildcard.
+    assert.equal(archive.queryEvents({ q: 'a_b' }).total, 0, 'underscore is literal, matches nothing here');
+    // '%' must be a literal percent, not "match everything".
+    const pct = archive.queryEvents({ q: '%' });
+    assert.equal(pct.total, 1, 'percent is literal');
+    assert.equal(pct.rows[0].taskId, 'a%b');
+    // Ordinary substring search still works.
+    assert.equal(archive.queryEvents({ q: 'azz' }).total, 1);
+    assert.equal(archive.queryEvents({ q: 'a%b' }).total, 1, 'literal a%b matches itself');
+  } finally { done(dir, archive); }
+});
+
+test('missingAvatarSeeds: indexed lookup, correct anti-join results', () => {
+  const { dir, archive } = tmpArchive();
+  try {
+    // The avatar-seed index exists so the per-poll sweep does not full-scan.
+    const idx = archive.db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_deng_events_avatar_seed'")
+      .get();
+    assert.ok(idx, 'idx_deng_events_avatar_seed present');
+
+    const ev = (taskId, seed, at) => ({
+      gradedAt: at, taskId, model: 'gpt', effort: 'low', nickname: 'n', passed: 1,
+      costUsd: null, costSource: null, costIsEstimate: null, points: null, avatarSeed: seed,
+    });
+    archive.insertEvents([
+      ev('t1', 'seed-a', '2026-07-30T10:00:00.000Z'),
+      ev('t2', 'seed-b', '2026-07-30T11:00:00.000Z'),
+      ev('t3', '', '2026-07-30T12:00:00.000Z'), // blank seed ignored
+    ]);
+    let missing = archive.missingAvatarSeeds(40);
+    assert.deepEqual(missing, ['seed-b', 'seed-a'], 'newest-first, blank excluded');
+
+    archive.upsertAvatar({ seed: 'seed-b', svg: Buffer.from('<svg/>'), fetchedAt: '2026-07-30T12:00:00.000Z' });
+    missing = archive.missingAvatarSeeds(40);
+    assert.deepEqual(missing, ['seed-a'], 'already-fetched seed drops out of the anti-join');
+  } finally { done(dir, archive); }
+});
+
 test('feedsSummary + dbStats reflect stored captures', () => {
   const { dir, archive } = tmpArchive();
   try {

@@ -17,6 +17,7 @@ import {
   patchCodexHtml,
   patchDengHtml,
   patchIntroHtml,
+  patchReportJs,
 } from "./replay.js";
 import { registerArchiveApi } from "./api-routes.js";
 import { registerHistoryApi } from "./history-api.js";
@@ -262,12 +263,19 @@ function registerReplayRoutes(router, archive) {
 
   // --- deng.codexradar.com clone pages ---
   const dengPage = cap("deng:html", { contentType: CT.HTML, patch: patchDengHtml });
-  router.add("GET", "/deng", dengPage);
+  // /deng (no trailing slash): redirect to /deng/ so the page's document-relative
+  // asset URLs (assets/i18n.js, assets/radar-report.js, …) resolve under the
+  // /deng/ mount instead of 404ing at the site root. Preserve any query (?at=).
+  router.add("GET", "/deng", (req, res, ctx) => {
+    const qi = req.url.indexOf("?");
+    const qs = qi >= 0 ? req.url.slice(qi) : "";
+    ctx.send(301, "", { Location: "/deng/" + qs, "Content-Type": CT.HTML });
+  });
   router.add("GET", "/deng/", dengPage);
   router.add("GET", "/deng/en", dengPage); // upstream serves identical bytes for /en
   router.add("GET", "/deng/intro", cap("deng:intro", { contentType: CT.HTML, patch: patchIntroHtml }));
   router.add("GET", "/deng/assets/i18n.js", cap("deng:i18n", { contentType: CT.JS }));
-  router.add("GET", "/deng/assets/radar-report.js", cap("deng:report-js", { contentType: CT.JS }));
+  router.add("GET", "/deng/assets/radar-report.js", cap("deng:report-js", { contentType: CT.JS, patch: (js) => patchReportJs(js) }));
 
   // --- deng API replay (mounted at /deng-api) ---
   router.add("GET", "/deng-api/api/v1/table", cap("deng:table", { contentType: CT.JSON }));

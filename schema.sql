@@ -74,6 +74,9 @@ CREATE TABLE IF NOT EXISTS deng_events (
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_deng_events_model ON deng_events(model, effort, graded_at);
 CREATE INDEX IF NOT EXISTS idx_deng_events_task ON deng_events(task_id, graded_at);
+-- Drives the avatar sweep's missingAvatarSeeds() anti-join/GROUP BY so it does
+-- not full-scan the ever-growing deng_events table on every deng:events poll.
+CREATE INDEX IF NOT EXISTS idx_deng_events_avatar_seed ON deng_events(avatar_seed, graded_at);
 
 -- Benchmark-cell state history (upstream keeps only the latest state per cell).
 CREATE TABLE IF NOT EXISTS cell_history (

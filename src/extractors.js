@@ -51,7 +51,7 @@ function ratings(archive, body) {
     const day = dayObj.day;
     if (!day) return;
     const updatedAt = dayObj.updated_at ?? null;
-    for (const m of dayObj.models || []) {
+    for (const m of Array.isArray(dayObj.models) ? dayObj.models : []) {
       if (!m || m.id == null) continue;
       const modelId = String(m.id);
       byKey.set(`${day}\0${modelId}`, {
@@ -66,7 +66,7 @@ function ratings(archive, body) {
     }
   };
   addDay({ day: d.day, updated_at: d.updated_at, models: d.models });
-  for (const h of d.history || []) addDay(h);
+  for (const h of Array.isArray(d.history) ? d.history : []) addDay(h);
   return archive.upsertRatingDays([...byKey.values()]);
 }
 
@@ -139,7 +139,7 @@ function iq(archive, body) {
 function events(archive, body) {
   const d = parseJson(body);
   const rows = [];
-  for (const e of d.events || []) {
+  for (const e of Array.isArray(d.events) ? d.events : []) {
     if (!e || typeof e !== "object") continue;
     const gradedAt = toIso(e.graded_at);
     const taskId = str(e.task_id);
@@ -167,7 +167,7 @@ function events(archive, body) {
 
 function cells(archive, body, capturedAt) {
   const d = parseJson(body);
-  for (const t of d.tasks || []) {
+  for (const t of Array.isArray(d.tasks) ? d.tasks : []) {
     if (!t || typeof t !== "object" || t.id == null) continue;
     archive.upsertDengTask({
       id: String(t.id),

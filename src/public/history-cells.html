@@ -208,14 +208,27 @@ footer a{color:var(--dim)}
     const k=document.createElement("div"); k.className="key"; k.textContent=cellKey; s.appendChild(k);
     const st=document.createElement("div"); st.className="stats";
     const span=rows.length?dur(rows[0].firstSeen,rows[rows.length-1].lastSeen):"–";
-    st.innerHTML="<span>状态记录 <b>"+rows.length+"</b> 段</span>"+
-      "<span>观察跨度 <b>"+span+"</b></span>"+
-      (taskObj?("<span>语言 <b>"+(taskObj.language||"–")+"</b></span><span>仓库 "+(taskObj.repo?'<a href="'+esc(taskObj.repo)+'" target="_blank" rel="noopener noreferrer">repo ↗</a>':"–")+"</span>"):"");
+    // Archived upstream task metadata (language, repo) must be rendered as text —
+    // never interpolated into innerHTML — and repo only becomes a link when it is
+    // a real http(s) URL (blocks javascript: and other script-bearing schemes).
+    const stat=(label,valueText,suffix)=>{ const sp=document.createElement("span"); sp.append(label+" "); const b=document.createElement("b"); b.textContent=valueText==null?"–":String(valueText); sp.appendChild(b); if(suffix)sp.append(suffix); st.appendChild(sp); };
+    stat("状态记录", String(rows.length), " 段");
+    stat("观察跨度", span);
+    if(taskObj){
+      stat("语言", taskObj.language||"–");
+      const rp=document.createElement("span"); rp.append("仓库 ");
+      const repo=taskObj.repo;
+      if(repo && /^https?:\/\//i.test(repo)){
+        const a=document.createElement("a"); a.href=repo; a.target="_blank"; a.rel="noopener noreferrer"; a.textContent="repo ↗"; rp.appendChild(a);
+      } else {
+        rp.append(repo?String(repo):"–");
+      }
+      st.appendChild(rp);
+    }
     s.appendChild(st);
     // rate sparkline across periods
     const spk=buildSpark(rows); if(spk)s.appendChild(spk);
   }
-  function esc(u){ return String(u).replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
 
   function buildSpark(rows){
     const pts=rows.map((r,i)=>({i,v:r.payload&&r.payload.rate!=null?Number(r.payload.rate):null})).filter(p=>p.v!=null);

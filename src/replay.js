@@ -113,6 +113,29 @@ export function patchDengHtml(html, ctx) {
   // 3. Rewrite the codexradar.com backlink to the local main-site clone.
   out = out.replace(/href="https:\/\/codexradar\.com\/?"/gi, 'href="/"');
 
+  // 3b. Neutralize the runtime backlink re-derivation. The inline
+  // syncMainSiteLinks() runs on every load and reassigns #backlink / #backlink2
+  // / #iq-main-site-link to the LIVE apex, overwriting the static rewrite in
+  // patch #3. Repoint those runtime assignments at the local clone root so the
+  // "back to main site" links stay inside the archive (and, under ?at=, don't
+  // jump from the archived snapshot to today's live site).
+  out = out.replace(
+    'el.href = "https://" + apex + (english ? "/en/" : "");',
+    'el.href = "/";'
+  );
+  out = out.replace(
+    /el\.href = "https:\/\/" \+ apex \+ \([^;]*\);/,
+    'el.href = "/";'
+  );
+  out = out.replace(
+    'if (iqLink) iqLink.href = "https://codexradar.com" + (english ? "/en/" : "");',
+    'if (iqLink) iqLink.href = "/";'
+  );
+  out = out.replace(
+    /if \(iqLink\) iqLink\.href = "https:\/\/codexradar\.com"[^;]*;/,
+    'if (iqLink) iqLink.href = "/";'
+  );
+
   // 4. Timebar first (after all text patches so their indices are unaffected).
   out = injectTimebar(out, ctx);
 
@@ -129,4 +152,30 @@ export function patchDengHtml(html, ctx) {
 /** patchIntroHtml — deng intro page: timebar injection only. */
 export function patchIntroHtml(html, ctx) {
   return injectTimebar(html, ctx);
+}
+
+/**
+ * patchReportJs — deng radar-report.js asset. The report launcher re-derives its
+ * own API base in apiRoot() (localhost → http://127.0.0.1:8399, otherwise →
+ * https://api.codexradar.com) instead of using the page's patched inline `var
+ * API`. Served verbatim, its fetches would hit the dead dev port (localhost) or
+ * leak live cross-origin requests to upstream (LAN) — bypassing the archive.
+ * Rewrite apiRoot() to always return the local /deng-api mount, analogous to the
+ * deng-HTML var-API patch. The timebar fetch wrapper then propagates ?at=.
+ */
+export function patchReportJs(js) {
+  const src = String(js);
+  const re = /function apiRoot\(\)\s*\{[\s\S]*?\n {2}\}/;
+  const repl =
+    "function apiRoot() {\n" +
+    '    // dradar2: always talk to the local archive replay mount.\n' +
+    '    return location.origin + "/deng-api";\n' +
+    "  }";
+  if (re.test(src)) return src.replace(re, repl);
+  // Fallback if the function shape drifted: rewrite the known upstream bases.
+  // (These URL literals only appear inside apiRoot in the captured asset.)
+  return src
+    .replace(/return "http:\/\/127\.0\.0\.1:8399";/g, 'return location.origin + "/deng-api";')
+    .replace(/"https:\/\/api\.codexradar\.com"/g, '(location.origin + "/deng-api")')
+    .replace(/"https:\/\/api\.claudecoderadar\.com"/g, '(location.origin + "/deng-api")');
 }

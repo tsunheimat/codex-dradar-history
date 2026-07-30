@@ -168,8 +168,13 @@ Notes:
   makes unchanged polls free.
 - `keepRaw: "sampled"`: these payloads embed live counters/timestamps so every poll differs.
   Store the raw body only when (a) the extractor reported changes this poll, OR (b) ≥ 3300 s since
-  the last stored raw version (heartbeat), else `storeRaw: false`. (For `codex:intel-efficiency`,
-  which has no extractor, only rule (b) applies.)
+  the last stored raw version (heartbeat), else `storeRaw: false`. Rule (a) is skipped for
+  extractors that report churn on essentially every poll (the raw body would then be re-stored every
+  poll, defeating the sampling): `codex:intel-efficiency` has no extractor; the leaderboard's
+  `dengstats` always samples a row; and `deng:table`'s `cells` reports ≥ 1 changed cell on nearly
+  every poll under continuous grading (which would re-store the ~1.9 MB body every 10 min). For all
+  three, raw is anchored by the heartbeat (b) only — the per-cell deltas that make `cells` churn are
+  still archived compactly in `cell_history`.
 - ~600 requests/day total. This is far below the load one open browser tab of the live site
   generates (the deng page itself polls every 15–60 s).
 
@@ -239,7 +244,11 @@ CLI: `node src/collector.js [--once] [--feed <id>]`.
 - Per feed run: `fetchUrl` (with stored etag) → on 200: normalize `upstreamTs` (look for
   `generated_at | updated_at | source_updated_at | monitored_at | baseline_generated_at` string at
   the JSON top level), run extractor if any, apply keepRaw policy, `saveCapture`, `recordRun`,
-  update feed_state (etag, failCount = 0). On 304: `recordRun(ok, changed: false)` only.
+  update feed_state (etag, failCount = 0). On 304: `recordRun(ok, changed: false)` only. The
+  extractor and the raw archive are **decoupled**: if the extractor throws (a garbage/truncated body
+  or an unforeseen upstream shape), the raw body is still archived per the keepRaw policy, then the
+  run is recorded as a failure (below) — a schema drift degrades the feed to "raw-only" instead of
+  losing the observation entirely.
 - Failure → `recordRun(ok: false, error)`, failCount += 1,
   `backoffUntil = now + min(intervalSec * 2^failCount, 3600) s`. HTTP 429 with `Retry-After` →
   honor it (cap 3600 s). Failures never crash the loop.
@@ -248,7 +257,9 @@ CLI: `node src/collector.js [--once] [--feed <id>]`.
   200 + svg → `upsertAvatar`; JSON `{"detail": "avatar not found"}` (still 200) or 404 → store a
   1-byte tombstone svg so it's not refetched. Recorded as feed `deng:avatars` in runs.
 - `--once`: run every feed once (all due), then exit 0 (exit 1 if every feed failed).
-- Startup: `pruneRuns(config.runsKeepDays)`. SIGINT/SIGTERM → finish current fetch, close db, exit.
+- `pruneRuns(config.runsKeepDays)` at startup **and every 24 h** inside the scheduler loop, so a
+  long-running (`restart: unless-stopped`) collector honours `RUNS_KEEP_DAYS` as a rolling window
+  rather than only trimming on process restart. SIGINT/SIGTERM → finish current fetch, close db, exit.
 - Log one line per run to stdout: `2026-07-31T02:00:00Z codex:current 200 changed=1 812ms 95KB`.
 
 ## 7. Config — `src/config.js`
@@ -288,9 +299,11 @@ Query param `at` (ISO-8601 or epoch-ms) on ANY replay route selects the newest c
 | `GET /api/subscriber-count` | `codex:subscriber-count` | |
 | `POST /api/subscribe` | – | 200 `{ok:false, error:"archive replica — 订阅在存档副本中不可用"}` |
 | `GET /assets/codex-logo.svg`, `/favicon.ico` | `codex:logo` | `image/svg+xml` |
-| `GET /deng` `/deng/` `/deng/en` | `deng:html` | patched page (upstream serves identical bytes for `/en`) |
+| `GET /deng/` `/deng/en` | `deng:html` | patched page (upstream serves identical bytes for `/en`) |
+| `GET /deng` | – | 301 redirect → `/deng/` (so the page's document-relative asset URLs resolve under the mount; preserves `?at=`) |
 | `GET /deng/intro` | `deng:intro` | patched page (timebar only) |
-| `GET /deng/assets/i18n.js`, `/deng/assets/radar-report.js` | `deng:i18n` / `deng:report-js` | `text/javascript`, any `?v=` |
+| `GET /deng/assets/i18n.js` | `deng:i18n` | `text/javascript`, any `?v=` |
+| `GET /deng/assets/radar-report.js` | `deng:report-js` | `text/javascript`, any `?v=`; **patched** — `apiRoot()` rewritten to `location.origin + "/deng-api"` (else the report launcher would fetch live upstream / the dead dev port) |
 | `GET /deng-api/api/v1/table` | `deng:table` | |
 | `GET /deng-api/api/v1/iq-history` | `deng:iq-history` | |
 | `GET /deng-api/api/v1/events` | `deng:events` | |
@@ -311,6 +324,7 @@ export function resolveAt(query)           // "at" → ISO string | null (accept
 export function patchCodexHtml(html, {feedId, capturedAt, at})
 export function patchDengHtml(html, {feedId, capturedAt, at})
 export function patchIntroHtml(html, {feedId, capturedAt, at})
+export function patchReportJs(js)          // rewrite radar-report.js apiRoot() → location.origin + "/deng-api"
 ```
 
 All pages: inject right after `<head>` (first occurrence, case-insensitive):
@@ -329,7 +343,11 @@ slash) → `href="/deng/"`.
    `if (host === "localhost" || host === "127.0.0.1") API = "http://127.0.0.1:8399";` →
    replace the whole statement with `;` (exact then regex
    `/if \(host === "localhost"[^\n]*API = "http:\/\/127\.0\.0\.1:8399";/`).
-3. Rewrite `href="https://codexradar.com"` / `...com/"` → `href="/"`.
+3. Rewrite `href="https://codexradar.com"` / `...com/"` → `href="/"`, AND neutralize the runtime
+   re-derivation in `syncMainSiteLinks()` (which reassigns `#backlink`/`#backlink2`/`#iq-main-site-link`
+   to the live apex on every load): repoint those `el.href = "https://" + apex + …` /
+   `iqLink.href = "https://codexradar.com" + …` assignments to `"/"` so the backlinks stay inside the
+   clone (and, under `?at=`, don't jump from the archived snapshot to today's live site).
 4. If patch 1 finds no match, still serve, and add
    `<script>window.__DRADAR_PATCH_WARNING = "deng API base patch failed";</script>` after the
    timebar script (timebar shows a warning badge).
@@ -339,7 +357,8 @@ slash) → `href="/deng/"`.
 - Reads its own `<script>` dataset (`document.currentScript`).
 - **Fetch wrapper**: wraps `window.fetch`; when an `at` value is active, same-origin requests whose
   pathname starts with `/api/`, `/data/`, `/deng-api/`, or equals `/current.json` get
-  `at=<value>` appended. (Relative URLs resolved against `location`.)
+  `at=<value>` appended. (Relative URLs resolved against `location`.) Handles all three fetch input
+  forms — string, `URL` object (`.href`), and `Request` (`.url`).
 - UI, styled scoped under `#dradar-timebar` (dark, monospace, cyan/green accent, fixed
   bottom-right, z-index 2147483000): collapsed pill `🗄 存档 ARCHIVE`; expanded panel shows:
   - snapshot time being viewed (Asia/Shanghai formatted) + `LIVE-latest` badge when no `at`;

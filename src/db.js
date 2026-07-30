@@ -302,16 +302,28 @@ export class Archive {
 
   upsertIqPoints(rows) {
     if (!rows || !rows.length) return 0;
-    const stmt = this._p(
-      `INSERT INTO iq_points (series, ts, score, n) VALUES (?,?,?,?)
-       ON CONFLICT(series, ts) DO UPDATE SET score=excluded.score, n=excluded.n
-       WHERE iq_points.score<>excluded.score OR IFNULL(iq_points.n,-1)<>IFNULL(excluded.n,-1)`
+    // SPEC §2/§5: the return value is the number of NEWLY INSERTED (series, ts)
+    // points. Revisions to an already-stored hour are still persisted (upstream
+    // revises the current in-progress hour's score/n on every poll), but a
+    // revision must NOT be counted as an insert — otherwise a revision-only poll
+    // is audited/logged as new data captured.
+    const ins = this._p(
+      "INSERT OR IGNORE INTO iq_points (series, ts, score, n) VALUES (?,?,?,?)"
     );
-    let count = 0;
+    const upd = this._p(
+      `UPDATE iq_points SET score=?, n=? WHERE series=? AND ts=?
+         AND (score<>? OR IFNULL(n,-1)<>IFNULL(?,-1))`
+    );
+    let inserted = 0;
     for (const r of rows) {
-      count += Number(stmt.run(r.series, r.ts, r.score, b(r.n)).changes);
+      const n = b(r.n);
+      if (Number(ins.run(r.series, r.ts, r.score, n).changes) > 0) {
+        inserted++;
+      } else {
+        upd.run(r.score, n, r.series, r.ts, r.score, n);
+      }
     }
-    return count;
+    return inserted;
   }
 
   insertEvents(rows) {
@@ -538,8 +550,10 @@ export class Archive {
       params.push(passedVal);
     }
     if (q) {
-      clauses.push("(task_id LIKE ? OR nickname LIKE ?)");
-      const like = `%${q}%`;
+      clauses.push("(task_id LIKE ? ESCAPE '\\' OR nickname LIKE ? ESCAPE '\\')");
+      // Escape LIKE metacharacters so the search box matches the literal text a
+      // user typed — a '_' or '%' should match itself, not act as a wildcard.
+      const like = `%${String(q).replace(/[\\%_]/g, "\\$&")}%`;
       params.push(like, like);
     }
     if (fromIso != null) {

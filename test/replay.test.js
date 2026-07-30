@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { resolveAt, patchCodexHtml, patchDengHtml, patchIntroHtml } from '../src/replay.js';
+import { resolveAt, patchCodexHtml, patchDengHtml, patchIntroHtml, patchReportJs } from '../src/replay.js';
 
 const FIX = path.join(import.meta.dirname, 'fixtures');
 const readFix = (name) => fs.readFileSync(path.join(FIX, name), 'utf8');
@@ -51,6 +51,23 @@ test('patchDengHtml: API base + localhost override + backlink + timebar injectio
   // Backlink to codexradar.com rewritten to the local root.
   assert.ok(!out.includes('href="https://codexradar.com"'), 'upstream backlink removed');
   assert.ok(out.includes('href="/"'), 'backlink rewritten to /');
+
+  // Runtime backlink re-derivation neutralized: syncMainSiteLinks() must not be
+  // able to reassign the anchors back to the live apex on load.
+  assert.ok(!out.includes('el.href = "https://" + apex'), 'runtime apex backlink assignment removed');
+  assert.ok(!out.includes('iqLink.href = "https://codexradar.com"'), 'runtime iq-link assignment removed');
+  assert.ok(out.includes('el.href = "/";'), 'runtime backlink repointed to /');
+  assert.ok(out.includes('if (iqLink) iqLink.href = "/";'), 'runtime iq-link repointed to /');
+});
+
+test('patchReportJs: apiRoot() rewritten to the local /deng-api mount', () => {
+  const js = readFix('radar-report.js');
+  const out = patchReportJs(js);
+  assert.ok(out.includes('location.origin + "/deng-api"'), 'apiRoot returns the local mount');
+  assert.ok(!out.includes('api.codexradar.com'), 'no upstream API host remains');
+  assert.ok(!out.includes('127.0.0.1:8399'), 'no dead dev-port remains');
+  // The report launcher fetch paths still resolve under the mount.
+  assert.ok(out.includes('/api/v1/table'), 'report still fetches the table endpoint');
 });
 
 test('patchDengHtml: warning injected when the API patch cannot match', () => {

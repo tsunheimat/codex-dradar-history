@@ -18,6 +18,10 @@ const UPSTREAM_TS_FIELDS = [
 const AVATAR_BASE = "https://api.codexradar.com/api/v1/avatar/";
 const HEARTBEAT_MS = 3300 * 1000;
 const REQUEST_GAP_MS = 250;
+// Extractors whose per-poll "changed" count is churn, not a meaningful content
+// change, so it must NOT anchor raw storage for a keepRaw:"sampled" feed (else
+// the raw body would be re-stored every poll). See decideStoreRaw / SPEC §3.
+const SAMPLER_EXTRACTORS = new Set(["dengstats", "cells"]);
 
 class HttpError extends Error {
   constructor(status, retryAfter) {
@@ -66,9 +70,14 @@ export function createCollector(config, archive) {
   function decideStoreRaw(feed, extractorChanged) {
     if (feed.keepRaw === "always") return true;
     // sampled: keep raw only on a meaningful content change, or as a heartbeat.
-    // `dengstats` is a pure sampler (always reports 1), so it does not count as
-    // a content change — leaderboard raw is anchored by the heartbeat instead.
-    const meaningful = extractorChanged > 0 && feed.extractor !== "dengstats";
+    // Extractors that report churn on essentially every poll (SAMPLER_EXTRACTORS)
+    // do NOT count as a meaningful content change (or the sampling would store
+    // the raw body every poll, defeating its purpose): `dengstats` always reports
+    // 1, and `cells` reports ≥1 changed cell on nearly every poll under
+    // continuous grading — which would re-store the ~1.9 MB deng:table body every
+    // 10 min. Both are anchored by the heartbeat instead; the per-cell deltas
+    // that make `cells` churn are already archived compactly in cell_history.
+    const meaningful = extractorChanged > 0 && !SAMPLER_EXTRACTORS.has(feed.extractor);
     if (meaningful) return true;
     const last = archive.latestCapture(feed.id);
     if (!last) return true;
@@ -185,8 +194,17 @@ export function createCollector(config, archive) {
       if (res.status >= 200 && res.status < 300 && res.body) {
         const capturedAt = nowIso();
         let changed = 0;
+        let extractorError = null;
         if (feed.extractor) {
-          changed = runExtractor(feed.extractor, archive, res.body, capturedAt).changed;
+          // The extractor and the raw archive are DECOUPLED: a malformed/garbage
+          // body or an unforeseen upstream shape must never cost us the raw
+          // snapshot. Extraction runs in its own guard; on failure we still
+          // archive the raw body below, then record the run as failed (SPEC §5).
+          try {
+            changed = runExtractor(feed.extractor, archive, res.body, capturedAt).changed;
+          } catch (err) {
+            extractorError = err;
+          }
         }
         const upstreamTs = extractUpstreamTs(feed, res.body);
         const storeRaw = decideStoreRaw(feed, changed);
@@ -199,6 +217,13 @@ export function createCollector(config, archive) {
           contentType: res.contentType,
           storeRaw,
         });
+        if (extractorError) {
+          // Raw observation is preserved above; extraction failed, so the run is
+          // a failure and enters backoff — but the feed degrades to raw-only
+          // instead of losing the snapshot entirely on upstream schema drift.
+          handleFailure(feed, startedAt, Date.now() - t0, extractorError);
+          return false;
+        }
         // cap.changed is true even when a sampled body was NOT stored, so a
         // meaningful "captured new info" flag also requires we actually stored.
         const storedNew = storeRaw && cap.changed && !cap.deduped;
@@ -308,7 +333,17 @@ async function main() {
     nextDue.set(f.id, due);
   }
 
+  // Prune the runs audit log at startup and then periodically, so a long-running
+  // (restart: unless-stopped) collector actually honours RUNS_KEEP_DAYS as a
+  // rolling window instead of only trimming on process restart.
+  const PRUNE_INTERVAL_MS = 24 * 3600 * 1000;
+  let lastPruneAt = Date.now();
+
   while (running) {
+    if (Date.now() - lastPruneAt >= PRUNE_INTERVAL_MS) {
+      archive.pruneRuns(config.runsKeepDays);
+      lastPruneAt = Date.now();
+    }
     const now = Date.now();
     const due = feeds.filter((f) => nextDue.get(f.id) <= now);
     if (due.length === 0) {

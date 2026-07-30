@@ -210,13 +210,14 @@ not actually change on every poll.
 | Feed(s) | Raw size | Poll cadence | Dominant cost |
 |---|---|---|---|
 | `codex:html`, `deng:html` | ~350–400 KB each | 10 min | biggest contributor when content churns |
-| `deng:table` | ~1.9 MB | 10 min, **sampled** (raw stored only on change / hourly heartbeat) | large but rarely re-stored |
+| `deng:table` | ~1.9 MB | 10 min, **sampled** (raw anchored by the ~hourly heartbeat; per-cell deltas tracked in `cell_history`) | large but rarely re-stored |
 | `codex:current`, `deng:iq-history`, ratings, leaderboard | 30 KB–430 KB | 5–15 min | modest, mostly deduped |
 | merged tables (iq_points, deng_events, cell_history, …) | small rows | per change | grows steadily but cheaply |
 
 Lower the footprint (and the request rate) by raising `INTERVAL_SCALE` or setting per-feed
-`FEED_INTERVALS`. Old collector audit rows are pruned automatically after `RUNS_KEEP_DAYS`; raw
-captures and history are kept indefinitely — that is the point.
+`FEED_INTERVALS`. Old collector audit rows are pruned automatically after `RUNS_KEEP_DAYS` (at
+startup and every 24 h while running, so the retention window holds even across months of
+uninterrupted uptime); raw captures and history are kept indefinitely — that is the point.
 
 ---
 

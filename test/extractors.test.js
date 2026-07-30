@@ -139,6 +139,25 @@ test('rss: extracts every <item> once', () => {
   } finally { done(dir, archive); }
 });
 
+test('extractors degrade gracefully when an array field drifts to an object (no throw)', () => {
+  const { dir, archive } = tmpArchive();
+  try {
+    const B = (o) => Buffer.from(JSON.stringify(o));
+    // Upstream ships a bare array as a paginated object instead — the extractor
+    // must return 0 (nothing understood) rather than throw, so the collector can
+    // still archive the raw snapshot and keep polling (raw-only degradation).
+    assert.equal(runExtractor('events', archive, B({ events: { items: [1, 2] } }), ISO).changed, 0);
+    assert.equal(
+      runExtractor('ratings', archive, B({ day: '2026-07-30', models: { x: 1 }, history: { items: [] } }), ISO).changed,
+      0
+    );
+    assert.equal(runExtractor('cells', archive, B({ tasks: { a: 1 }, cells: {} }), ISO).changed, 0);
+    // A genuinely malformed body still throws (the collector records that run as
+    // a failure while archiving the raw body regardless).
+    assert.throws(() => runExtractor('iq', archive, Buffer.from('{ "s": [ {'), ISO));
+  } finally { done(dir, archive); }
+});
+
 test('dengstats: always samples one row per poll (not idempotent by design)', () => {
   const { dir, archive } = tmpArchive();
   try {
