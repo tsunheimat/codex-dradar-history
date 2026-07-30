@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>什么是分布式雷达 · Codex 众测站</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%2304140b' stroke='%2300e5ff' stroke-width='1.6'/%3E%3Ccircle cx='16' cy='16' r='9.5' fill='none' stroke='%2300e5ff' stroke-opacity='.45'/%3E%3Ccircle cx='16' cy='16' r='4.5' fill='none' stroke='%2300e5ff' stroke-opacity='.45'/%3E%3Cpath d='M16 16L16 1A15 15 0 0 1 25.6 4.5Z' fill='%2300e5ff' fill-opacity='.55'/%3E%3Ccircle cx='21.5' cy='10.5' r='2.2' fill='%2339ff14'/%3E%3C/svg%3E">
+<meta name="description" content="3 分钟看懂分布式雷达：社区志愿者用自己的 Codex 订阅实测 GPT-5.6 的真实编码能力，服务端独立判分，降智无处逃。">
+<style>
+/* 介绍页与主表同一套 CRT 终端视觉(codex 深色),但排版按"读完一篇"来做。
+   内容与小红书招募图卡同源:封面钩子→是什么→怎么玩→值不值→凭什么信→上车。 */
+:root {
+  --bg: #05080a; --panel: #0a100a; --panel2: #0f1810; --text: #c9e8d2;
+  --muted: #5d8a68; --accent: #00e5ff; --good: #39ff14; --bad: #ff3b3b;
+  --warn: #ffb000; --line: #16261b;
+  --sol: #eab308; --terra: #5b9cf6; --luna: #ccd8e8;
+  --hero: linear-gradient(135deg,#04140a 0%,#0a2a14 100%);
+  --mono: ui-monospace, "SF Mono", "SFMono-Regular", "JetBrains Mono", "Cascadia Code",
+    Consolas, "Liberation Mono", Menlo, monospace, "PingFang SC", "Microsoft YaHei";
+  --sans: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 16px/1.9 var(--sans); position: relative; }
+.crt { position: fixed; inset: 0; pointer-events: none; z-index: 999;
+  background: repeating-linear-gradient(to bottom, rgba(255,255,255,.04) 0 1px, transparent 1px 2px);
+  mix-blend-mode: overlay; opacity: .6; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { max-width: 880px; margin: 0 auto; padding: 0 20px; }
+
+/* ---- 顶栏 ---- */
+.topbar { background: var(--hero); }
+.topbar .wrap { display: flex; align-items: center; gap: 14px; padding: 14px 20px; }
+.topbar .brand { font: 700 15px/1 var(--mono); color: #fff; letter-spacing: 1px; }
+.topbar .brand em { font-style: normal; color: var(--good); text-shadow: 0 0 10px var(--good); }
+.top-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.topbar .back { font-size: 13px; color: #fff; opacity: .9; white-space: nowrap; }
+.language-switch { appearance: none; display: inline-flex; align-items: center;
+  justify-content: center; min-width: 38px; min-height: 29px; padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 58%, transparent);
+  border-radius: 999px; color: #fff; background: rgba(2,18,11,.45);
+  box-shadow: 0 0 12px -7px var(--accent); font: 800 12px/1 var(--mono);
+  cursor: pointer; }
+.language-switch:hover { color: var(--accent); border-color: var(--accent); }
+.language-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 560px) {
+  .topbar .wrap { align-items: flex-start; flex-wrap: wrap; }
+  .topbar .brand { line-height: 1.5; }
+  .top-actions { width: 100%; justify-content: space-between; }
+}
+
+/* ---- hero ---- */
+.hero { padding: 64px 0 56px; text-align: left; position: relative; overflow: hidden;
+  background: radial-gradient(90% 70% at 50% 0%, #0a2312 0%, transparent 70%); }
+.hero .radar { width: 150px; height: 150px; border-radius: 50%; position: relative; margin-bottom: 34px;
+  border: 2px solid var(--line);
+  background: repeating-radial-gradient(circle at 50% 50%, transparent 0 23px, var(--line) 23px 25px), #071009; }
+.hero .radar::before { content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 20deg, color-mix(in srgb, var(--good) 55%, transparent), transparent 75deg);
+  animation: sweep 4s linear infinite; }
+.hero .radar::after { content: ""; position: absolute; left: 64%; top: 30%; width: 9px; height: 9px;
+  border-radius: 50%; background: var(--good); box-shadow: 0 0 12px var(--good); }
+@keyframes sweep { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .hero .radar::before { animation: none; } }
+h1 { font-family: var(--mono); font-size: clamp(34px, 7vw, 56px); line-height: 1.28;
+  letter-spacing: 1px; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--good); text-shadow: 0 0 22px color-mix(in srgb, var(--good) 55%, transparent); }
+.hero .sub { font-size: clamp(18px, 3.4vw, 24px); margin-top: 22px; }
+.hero .sub b { color: var(--accent); }
+.slogan { display: inline-block; margin-top: 34px; font: 700 clamp(16px, 3vw, 21px)/1 var(--mono);
+  color: var(--bg); background: var(--good); padding: 12px 20px; border-radius: 8px; letter-spacing: 3px;
+  box-shadow: 0 0 30px color-mix(in srgb, var(--good) 40%, transparent); }
+.cta-row { display: flex; gap: 14px; margin-top: 38px; flex-wrap: wrap; }
+.btn { font: 700 16px/1 var(--mono); padding: 15px 26px; border-radius: 8px; white-space: nowrap; }
+.btn.primary { background: var(--accent); color: var(--bg);
+  box-shadow: 0 0 26px color-mix(in srgb, var(--accent) 45%, transparent); }
+.btn.primary:hover { text-decoration: none; filter: brightness(1.12); }
+.btn.ghost { border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent); }
+.btn.ghost:hover { text-decoration: none; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* ---- 章节 ---- */
+section { padding: 58px 0 6px; }
+.eyebrow { font: 700 14px/1 var(--mono); color: var(--good); letter-spacing: 5px; margin-bottom: 14px; }
+.eyebrow::before { content: "// "; }
+h2 { font-family: var(--mono); font-size: clamp(26px, 5vw, 38px); line-height: 1.3;
+  margin-bottom: 24px; text-wrap: balance; }
+.lede { max-width: 66ch; margin-bottom: 16px; }
+.lede b { color: var(--good); }
+.lede .cy { color: var(--accent); }
+
+/* 是什么 */
+.bignum { font: 700 clamp(64px, 13vw, 108px)/1.1 var(--mono); color: var(--good);
+  letter-spacing: 1px; font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 32px color-mix(in srgb, var(--good) 35%, transparent); }
+.bignum small { font-size: clamp(24px, 5vw, 40px); color: var(--text); }
+.formula { font: 700 clamp(18px, 3.6vw, 26px)/1.5 var(--mono); margin: 6px 0 26px; }
+.formula b { color: var(--accent); }
+.models { display: flex; gap: 10px; flex-wrap: wrap; margin: 26px 0 8px; }
+.model { font: 700 14px/1 var(--mono); padding: 10px 14px; border-radius: 7px; border: 2px solid; white-space: nowrap; }
+.model.sol { color: var(--sol); border-color: var(--sol); background: rgba(234,179,8,.10); }
+.model.terra { color: var(--terra); border-color: var(--terra); background: rgba(91,156,246,.10); }
+.model.luna { color: var(--luna); border-color: var(--luna); background: rgba(204,216,232,.08); }
+.model.old { color: var(--accent); border-color: var(--accent); background: rgba(0,229,255,.08); }
+
+/* 实时数字条(JS 拉 API 刷新,拉不到就保留兜底文案) */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px; margin: 28px 0 8px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; }
+.stat .v { font: 700 26px/1.2 var(--mono); color: var(--good); font-variant-numeric: tabular-nums; }
+.stat .k { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+/* 怎么玩 */
+.steps { display: flex; flex-direction: column; gap: 14px; }
+.step { display: flex; gap: 18px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 18px 20px; }
+.step .no { font: 700 30px/1.1 var(--mono); color: var(--good); flex: none; width: 40px; }
+.step h3 { font-size: 19px; margin-bottom: 4px; }
+.step p { font-size: 15px; color: var(--muted); }
+.step p b { color: var(--text); }
+.step.hot { border-color: color-mix(in srgb, var(--good) 60%, var(--line)); background: #0c1a0e; }
+.step.hot h3 { color: var(--good); }
+
+/* 值不值 */
+.half h3 { font: 700 18px/1 var(--mono); letter-spacing: 3px; margin: 22px 0 10px; }
+.half.pay h3 { color: var(--warn); }
+.half.get h3 { color: var(--good); }
+.li { position: relative; padding-left: 30px; margin-top: 10px; max-width: 68ch; }
+.li::before { content: "▸"; position: absolute; left: 4px; top: 0; color: var(--good); }
+.half.pay .li::before { color: var(--warn); }
+.li b { color: var(--good); }
+.half.pay .li b { color: var(--warn); }
+.trophy { margin-top: 26px; border: 1px solid var(--sol); border-radius: 10px; padding: 18px 22px;
+  background: linear-gradient(100deg, rgba(234,179,8,.13), transparent 70%); max-width: 74ch; }
+.trophy b { color: var(--sol); }
+
+/* 凭什么信 */
+.qa { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 14px; }
+.q { background: var(--panel); border-left: 5px solid var(--accent); border-radius: 8px; padding: 16px 20px; }
+.q h3 { font-size: 17px; color: var(--accent); margin-bottom: 6px; }
+.q p { font-size: 14.5px; }
+.q p b { color: var(--good); }
+.q.g { border-left-color: var(--good); }
+.q.g h3 { color: var(--good); }
+
+/* 上车 */
+.board-cta { margin: 44px 0 20px; text-align: center; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 12px; padding: 44px 24px 40px; }
+.board-cta h2 { margin-bottom: 10px; }
+.board-cta .go { display: inline-block; margin: 22px 0 26px; font: 700 clamp(18px, 4.6vw, 30px)/1.2 var(--mono);
+  color: var(--bg); background: var(--accent); padding: 16px 30px; border-radius: 10px;
+  box-shadow: 0 0 34px color-mix(in srgb, var(--accent) 40%, transparent); }
+.board-cta .go:hover { text-decoration: none; filter: brightness(1.12); }
+.board-cta .need { font-size: 15px; color: var(--muted); }
+.board-cta .need b { color: var(--text); }
+
+footer { border-top: 1px solid var(--line); margin-top: 46px; padding: 26px 0 60px;
+  font: 13px/2 var(--mono); color: var(--muted); }
+footer b { color: var(--good); }
+</style>
+</head>
+<body>
+<div class="crt" aria-hidden="true"></div>
+
+<div class="topbar"><div class="wrap">
+  <span class="brand">📡 分布式雷达 · <em>Codex 众测站</em></span>
+  <span class="top-actions">
+    <button class="language-switch" id="language-switch" type="button"
+      aria-label="Switch to English" aria-pressed="false">EN</button>
+    <a class="back" href="/">← 返回众测大表</a>
+  </span>
+</div></div>
+
+<header class="hero"><div class="wrap">
+  <div class="radar" aria-hidden="true"></div>
+  <h1>你的 GPT<br>又双叒<em>降智</em>了?</h1>
+  <p class="sub">别猜了,也别吵了——<b>咱们直接测给全网看。</b></p>
+  <div><span class="slogan">人人蹬一脚 · 降智无处逃</span></div>
+  <div class="cta-row">
+    <a class="btn primary" href="/">去认领格子 →</a>
+    <a class="btn ghost" href="#how">四步上手</a>
+  </div>
+</div></header>
+
+<section id="what"><div class="wrap">
+  <div class="eyebrow">这是什么</div>
+  <div class="bignum">2,128 <small>个格子</small></div>
+  <div class="formula">112 道真实开源编程题 <b>×</b> 19 个模型档位</div>
+  <p class="lede">每个格子 = 一个模型在这道题、这个推理档位的<b>最近实测通过率</b>,由社区志愿者用自己的 Codex 订阅跑出来,实时点亮。</p>
+  <p class="lede">官方跑分是静态成绩单,雷达测的是<span class="cy">此刻</span>的模型;还把上一代 <b>GPT-5.5 拉进同场对照</b>,降没降智一眼见分晓。</p>
+  <div class="models">
+    <span class="model sol">Sol · 6 档</span>
+    <span class="model terra">Terra · 6 档</span>
+    <span class="model luna">Luna · 5 档</span>
+    <span class="model old">5.5 high/xhigh · 上代对照</span>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="v" id="st-vol">500+</div><div class="k">社区志愿者</div></div>
+    <div class="stat"><div class="v" id="st-graded">1,500+</div><div class="k">服务端独立判分</div></div>
+    <div class="stat"><div class="v" id="st-tokens">百亿级</div><div class="k">累计贡献 tokens</div></div>
+  </div>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <div class="eyebrow">怎么参与</div>
+  <h2>四步上车,一条命令都不用敲</h2>
+  <div class="steps">
+    <div class="step"><span class="no">1</span><div>
+      <h3>GitHub 登录众测站</h3>
+      <p>只用来确认身份、发访问令牌,<b>不碰你的 OpenAI 账号</b>。</p>
+    </div></div>
+    <div class="step"><span class="no">2</span><div>
+      <h3>在大表挑格子认领</h3>
+      <p>每格标着透明价签(约占你 7 天额度的 %),<b>量力认领</b>,最多 10 个;懒得挑就点"🎯 系统推荐 10 格"。</p>
+    </div></div>
+    <div class="step hot"><span class="no">3</span><div>
+      <h3>复制命令,粘给你的 Codex</h3>
+      <p>它自己配环境、自己跑题、自己上传。<b>你去干别的,它跑完叫你。</b></p>
+    </div></div>
+    <div class="step"><span class="no">4</span><div>
+      <h3>回来看格子点亮</h3>
+      <p>你跑过的格子上有你的头像,名字登上<a href="/#contributors">雷达天梯</a>。</p>
+    </div></div>
+  </div>
+</div></section>
+
+<section id="worth"><div class="wrap">
+  <div class="eyebrow">值不值</div>
+  <h2>烧的是额度,攒的是江湖地位</h2>
+  <div class="half pay">
+    <h3>你付出</h3>
+    <div class="li">自己订阅里的一点额度——<b>价签全透明</b>,跑之前就知道大概花多少,绝不盲烧</div>
+  </div>
+  <div class="half get">
+    <h3>你得到</h3>
+    <div class="li">积分 = 烧掉的额度,<b>过不过都给分</b>——啃硬骨头不亏,失败也是有效数据</div>
+    <div class="li">天梯排名 + GitHub 头像亮相,总榜积分<b>永久累计、永不缩水</b></div>
+    <div class="li">第一手知道模型什么时候降智——<b>你就是雷达本达</b></div>
+  </div>
+  <div class="trophy">🏆 每月结算:月榜<b>冠亚季军</b>各得一座<b>独家定制 3D 打印雷达奖杯</b>,月初积分重赛,人人有机会。</div>
+</div></section>
+
+<section id="trust"><div class="wrap">
+  <div class="eyebrow">凭什么信</div>
+  <h2>数据真实,是这座雷达的命</h2>
+  <div class="qa">
+    <div class="q g">
+      <h3>成绩会不会有人刷?</h3>
+      <p>刷不了。你只上传补丁,<b>服务器在干净环境里重新跑测试判分</b>——谁自报的结果都不算数,包括我们自己。</p>
+    </div>
+    <div class="q">
+      <h3>我的账号安全吗?</h3>
+      <p>订阅凭据<b>全程留在你自己机器上</b>,从不经过我们服务器;上传前自动脱敏、扫密钥,带密钥的补丁直接拒收。</p>
+    </div>
+    <div class="q">
+      <h3>跑一半挂了额度白烧?</h3>
+      <p>中断可<b>断点续跑</b>;上传失败自动补传;平台自身故障导致的损失<b>照价补积分</b>。</p>
+    </div>
+    <div class="q">
+      <h3>有人作弊怎么办?</h3>
+      <p>全程轨迹审计(联网搜索直接作废)、异常提交先隔离复核——<b>误伤有出口,作弊无收益</b>。</p>
+    </div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="board-cta">
+    <div class="eyebrow" style="text-align:center">现在上车</div>
+    <h2>下一格,等你来点亮</h2>
+    <a class="go" href="/">进入众测大表 →</a>
+    <p class="need">你需要:<b>Codex 订阅</b>(Plus 就够) · <b>Docker</b> · 10 分钟<br>
+      开源客户端 <a href="https://github.com/SecurityMind/dradar" target="_blank" rel="noopener noreferrer">github.com/SecurityMind/dradar ↗</a> ·
+      社区群:主站 <a href="https://codexradar.com" target="_blank" rel="noopener noreferrer">codexradar.com</a> 扫码,反馈直达开发者</p>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <b>人人蹬一脚 · 降智无处逃</b><br>
+  分布式雷达 · Codex 众测站 · powered by codexradar
+</div></footer>
+
+<script src="assets/i18n.js?v=20260729-1"></script>
+<script>
+// 实时数字:拉得到就替换,拉不到保留静态兜底(页面不依赖 API 也完整)。
+(function () {
+  var API = "https://api.codexradar.com";
+  fetch(API + "/api/v1/leaderboard").then(function (r) { return r.json(); }).then(function (d) {
+    var c = d.contributors || [];
+    var graded = 0, tokens = 0;
+    c.forEach(function (x) { graded += x.graded || 0; tokens += x.tokens || 0; });
+    if (graded) document.getElementById("st-graded").textContent = graded.toLocaleString("en-US");
+    if (tokens) document.getElementById("st-tokens").textContent = (tokens / 1e8).toFixed(1) + " 亿";
+  }).catch(function () {});
+})();
+</script>
+</body>
+</html>

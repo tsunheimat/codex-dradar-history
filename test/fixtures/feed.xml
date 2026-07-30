@@ -1,0 +1,326 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:ns0="http://www.w3.org/2005/Atom" version="2.0">
+  <channel>
+    <title>Codex 雷达</title>
+    <link>https://codexradar.com/</link>
+    <ns0:link href="https://codexradar.com/feed.xml" rel="self" type="application/rss+xml" />
+    <description>只发布 Codex 速蹬窗口开启和关闭提醒。</description>
+    <language>zh-CN</language>
+    <ttl>10</ttl>
+    <lastBuildDate>Fri, 10 Jul 2026 05:30:53 GMT</lastBuildDate>
+
+    <item>
+      <title>官方窗口开启：ChatGPT Work / Codex 24小时内两次硬重置</title>
+      <link>https://codexradar.com/#codex-speed-window-2026-07-10-codex</link>
+      <guid isPermaLink="false">codex-speed-window-2026-07-10-codex-open</guid>
+      <pubDate>Fri, 10 Jul 2026 05:30:53 GMT</pubDate>
+      <description><![CDATA[
+Tibo 明确宣布未来24小时内，ChatGPT Work 和 Codex 将再进行两次 rate-limit reset。
+
+窗口开启：7月10日 13:30 UTC+8
+机制：直接额度硬重置；发重置卡未获确认。
+来源：https://x.com/thsottiaux/status/2075452680760443190
+]]></description>
+    </item>
+
+    
+    
+    
+    
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+
+    <item>
+      <title>权益记录：Codex 用量限制已重置</title>
+      <link>https://codexradar.com/#codex-speed-window-2026-06-17-codex</link>
+      <guid isPermaLink="false">codex-speed-window-2026-06-17-codex-close</guid>
+      <pubDate>Wed, 17 Jun 2026 21:25:51 GMT</pubDate>
+      <description>
+Codex 用量限制已重置。
+
+确认依据：用户确认已到账，且 Tibo 原帖下已有用户反馈 automatic reset applied。非 Tibo/Sam 官方完成帖。
+
+官方预告或发卡：6月17日 02:49 UTC+8
+权益真实生效：6月18日 05:25 UTC+8
+历史节奏：26小时35分
+适用范围：所有计划
+
+来源：https://x.com/xt0n1t3ch/status/2067358081898483746
+      </description>
+    </item>
+
+    <item>
+      <title>速蹬窗口关闭：Codex 可靠性事故补偿重置</title>
+      <link>https://codexradar.com/#codex-speed-window-2026-06-04-codex</link>
+      <guid isPermaLink="false">codex-speed-window-2026-06-04-codex-close</guid>
+      <pubDate>Thu, 04 Jun 2026 00:25:58 GMT</pubDate>
+      <description>
+速蹬窗口已关闭。
+
+窗口开启：6月4日 08:25 UTC+8
+窗口关闭：6月4日 08:25 UTC+8
+速蹬窗口：无窗
+适用范围：所有付费计划
+
+来源：https://x.com/thsottiaux/status/2062329981548802523
+      </description>
+    </item>
+
+    <item>
+      <title>速蹬窗口关闭：500 万用户庆祝重置</title>
+      <link>https://codexradar.com/#codex-speed-window-2026-05-31-500</link>
+      <guid isPermaLink="false">codex-speed-window-2026-05-31-codex-close</guid>
+      <pubDate>Sun, 31 May 2026 15:25:06 GMT</pubDate>
+      <description>
+速蹬窗口已关闭。
+
+重置原因：Tibo 将这次重置解释为庆祝 Codex 达到 500 万用户；随后确认所有付费 ChatGPT 订阅的周额度和 5 小时额度都已恢复到 100%。
+
+窗口开启：5月31日 13:59 UTC+8
+窗口关闭：5月31日 23:25 UTC+8
+速蹬窗口：9小时25分
+适用范围：所有付费计划
+
+来源：https://x.com/thsottiaux/status/2061106703446450392
+      </description>
+    </item>
+
+    <item>
+      <title>速蹬窗口开启：500 万用户庆祝重置</title>
+      <link>https://codexradar.com/#codex-speed-window-2026-05-31-500</link>
+      <guid isPermaLink="false">codex-speed-window-2026-05-31-500-open</guid>
+      <pubDate>Sun, 31 May 2026 05:59:10 GMT</pubDate>
+      <description>
+发现有效重置预告，速蹬窗口开启。
+
+窗口开启：5月31日 13:59 UTC+8
+当前动作：尽快使用剩余额度，等待后续窗口关闭信号。
+适用范围：Codex 用户
+
+来源：https://x.com/thsottiaux/status/2060964284117782996
+      </description>
+    </item>
+
+    <item>
+      <title>速蹬窗口关闭：长会话压缩耗额异常补偿重置</title>
+      <link>https://codexradar.com/#codex-speed-window-2026-05-24-codex</link>
+      <guid isPermaLink="false">codex-speed-window-2026-05-24-codex-close</guid>
+      <pubDate>Sat, 23 May 2026 20:14:35 GMT</pubDate>
+      <description>
+速蹬窗口已关闭。
+
+窗口开启：5月23日 08:21 UTC+8
+窗口关闭：5月24日 04:14 UTC+8
+速蹬窗口：19小时53分
+适用范围：Codex 用户
+
+来源：https://x.com/thsottiaux/status/2058280452851638313
+      </description>
+    </item>
+
+    <item>
+      <title>速蹬窗口开启：长会话压缩耗额异常补偿重置</title>
+      <link>https://codexradar.com/#codex-speed-window-2026-05-23-codex</link>
+      <guid isPermaLink="false">codex-speed-window-2026-05-23-codex-open</guid>
+      <pubDate>Sat, 23 May 2026 00:21:33 GMT</pubDate>
+      <description>
+发现有效重置预告，速蹬窗口开启。
+
+窗口开启：5月23日 08:21 UTC+8
+当前动作：尽快使用剩余额度，等待后续窗口关闭信号。
+适用范围：Codex 用户
+
+来源：https://x.com/thsottiaux/status/2057980213854921096
+      </description>
+    </item>
+
+    <item>
+      <title>速蹬窗口关闭：Sam 点赞承诺速率限制重置</title>
+      <link>https://codexradar.com/#codex-speed-window-2026-05-20-codex</link>
+      <guid isPermaLink="false">codex-speed-window-2026-05-20-codex-close</guid>
+      <pubDate>Tue, 19 May 2026 18:39:18 GMT</pubDate>
+      <description>
+速蹬窗口已关闭。
+
+窗口开启：5月20日 02:31 UTC+8
+窗口关闭：5月20日 02:39 UTC+8
+速蹬窗口：8分钟
+适用范围：Codex 用户
+
+来源：https://x.com/bossnayamoss/status/2056806923391877438
+      </description>
+    </item>
+
+    <item>
+      <title>速蹬窗口开启：Sam 点赞承诺速率限制重置</title>
+      <link>https://codexradar.com/#codex-speed-window-2026-05-20-codex</link>
+      <guid isPermaLink="false">codex-speed-window-2026-05-20-codex-open</guid>
+      <pubDate>Tue, 19 May 2026 18:31:16 GMT</pubDate>
+      <description>
+发现有效重置预告，速蹬窗口开启。
+
+窗口开启：5月20日 02:31 UTC+8
+当前动作：尽快使用剩余额度，等待后续窗口关闭信号。
+适用范围：Codex 用户
+
+来源：https://x.com/sama/status/2056804900017947046
+      </description>
+    </item>
+
+    <item>
+      <title>速蹬窗口关闭：GPT-5.5 能力退化补偿重置</title>
+      <link>https://codexradar.com/#codex-speed-window-2026-05-16-gpt-55-degradation</link>
+      <guid isPermaLink="false">codex-speed-window-2026-05-16-gpt-55-degradation-close</guid>
+      <pubDate>Sat, 16 May 2026 17:51:00 GMT</pubDate>
+      <description>
+速蹬窗口已关闭。
+
+窗口开启：2026-05-16 08:31 UTC+8
+窗口关闭：2026-05-17 01:51 UTC+8
+速蹬窗口：17小时20分
+适用范围：所有付费计划
+
+来源：https://x.com/thsottiaux/status/2055707616605835333
+      </description>
+    </item>
+
+    <item>
+      <title>速蹬窗口开启：GPT-5.5 能力退化补偿重置</title>
+      <link>https://codexradar.com/#codex-speed-window-2026-05-16-gpt-55-degradation</link>
+      <guid isPermaLink="false">codex-speed-window-2026-05-16-gpt-55-degradation-open</guid>
+      <pubDate>Sat, 16 May 2026 00:31:00 GMT</pubDate>
+      <description>
+发现有效重置预告，速蹬窗口开启。
+
+窗口开启：2026-05-16 08:31 UTC+8
+当前动作：尽快使用剩余额度，等待后续窗口关闭信号。
+适用范围：Codex 付费计划用户
+
+来源：https://x.com/thsottiaux/status/2055446089957036402
+      </description>
+    </item>
+
+  </channel>
+</rss>

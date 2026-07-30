@@ -1,0 +1,17 @@
+{
+  "name": "dradar2",
+  "version": "1.0.0",
+  "description": "Personal long-term archive and time-travel clone UI for codexradar.com and deng.codexradar.com",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "collect": "node src/collector.js",
+    "collect:once": "node src/collector.js --once",
+    "seed:fixtures": "node scripts/seed-fixtures.js",
+    "test": "node --test test/"
+  }
+}
