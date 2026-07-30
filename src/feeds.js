@@ -30,3 +30,56 @@ const BY_ID = new Map(FEEDS.map((f) => [f.id, f]));
 export function getFeed(id) {
   return BY_ID.get(id) || null;
 }
+
+// ---------------------------------------------------------------------------
+// Discovered-asset mirroring. The pages reference a changing set of same-origin
+// images (QR codes, dated comics, orb/bike art …) that cannot be enumerated as
+// fixed feeds. After each successful page poll the collector sweeps the HTML
+// for `assets/...` references and mirrors new/changed ones under synthetic
+// feeds `<site>:asset:<path>`; the server replays them at /assets/* and
+// /deng/assets/*.
+// ---------------------------------------------------------------------------
+
+export const ASSET_SWEEP_PAGES = new Map([
+  ["codex:html",    { site: "codex", origin: "https://codexradar.com/" }],
+  ["codex:html-en", { site: "codex", origin: "https://codexradar.com/" }],
+  ["deng:html",     { site: "deng",  origin: "https://deng.codexradar.com/" }],
+  ["deng:intro",    { site: "deng",  origin: "https://deng.codexradar.com/" }],
+]);
+
+// Assets already collected as explicit first-class feeds — the sweep skips them.
+export const EXPLICIT_ASSET_PATHS = new Set([
+  "codex:assets/codex-logo.svg",
+  "deng:assets/i18n.js",
+  "deng:assets/radar-report.js",
+]);
+
+export function assetFeedId(site, path) {
+  return `${site}:asset:${path}`;
+}
+
+const ASSET_CT = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  ico: "image/x-icon",
+  css: "text/css; charset=utf-8",
+  js: "text/javascript; charset=utf-8",
+  mjs: "text/javascript; charset=utf-8",
+  json: "application/json",
+  woff: "font/woff",
+  woff2: "font/woff2",
+  ttf: "font/ttf",
+  otf: "font/otf",
+  mp3: "audio/mpeg",
+  mp4: "video/mp4",
+  webm: "video/webm",
+};
+
+export function assetContentType(path) {
+  const ext = String(path).toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  return (ext && ASSET_CT[ext]) || "application/octet-stream";
+}

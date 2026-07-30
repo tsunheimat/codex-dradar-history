@@ -52,6 +52,18 @@ function timebarScript({ feedId, capturedAt, at }) {
   );
 }
 
+/**
+ * Remove third-party analytics scripts (Cloudflare RUM beacon) so the replayed
+ * page is fully self-contained: no external requests, no tracking, and no CORS
+ * console noise when served from a non-upstream origin.
+ */
+function stripExternalBeacons(html) {
+  return html.replace(
+    /<script[^>]*\bsrc=['"]https:\/\/static\.cloudflareinsights\.com\/[^'"]*['"][^>]*>\s*<\/script>/gi,
+    ""
+  );
+}
+
 /** Insert the timebar loader right after the first <head> tag (case-insensitive). */
 function injectTimebar(html, ctx) {
   const script = timebarScript(ctx);
@@ -69,7 +81,7 @@ function injectTimebar(html, ctx) {
  * Injects the timebar and rewrites the "前往分布式雷达" backlink to the local clone.
  */
 export function patchCodexHtml(html, ctx) {
-  let out = injectTimebar(html, ctx);
+  let out = injectTimebar(stripExternalBeacons(html), ctx);
   out = out.replace(/href="https:\/\/deng\.codexradar\.com\/?"/gi, 'href="/deng/"');
   return out;
 }
@@ -81,7 +93,7 @@ export function patchCodexHtml(html, ctx) {
  * warning flag if the API base rewrite did not match (upstream markup drifted).
  */
 export function patchDengHtml(html, ctx) {
-  let out = html;
+  let out = stripExternalBeacons(html);
   let apiPatched = false;
 
   // 1. API base: `var API = "https://api." + apex;` → local mount.
@@ -149,9 +161,9 @@ export function patchDengHtml(html, ctx) {
   return out;
 }
 
-/** patchIntroHtml — deng intro page: timebar injection only. */
+/** patchIntroHtml — deng intro page: timebar injection + beacon strip only. */
 export function patchIntroHtml(html, ctx) {
-  return injectTimebar(html, ctx);
+  return injectTimebar(stripExternalBeacons(html), ctx);
 }
 
 /**

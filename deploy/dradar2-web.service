@@ -1,0 +1,19 @@
+[Unit]
+Description=dradar2 archive replay server (codexradar.com clone)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/dradar2
+# Adjust WorkingDirectory to the repo checkout, e.g.:
+#   /mnt/vibe-coding-share/develop/codex-dradar2
+ExecStart=/usr/bin/env node src/server.js
+Environment=PORT=3210
+Environment=BIND=0.0.0.0
+Environment=DATA_DIR=./data
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

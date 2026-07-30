@@ -164,6 +164,15 @@ export function getFeed(id)
 Notes:
 - `deng` radar-insights is byte-identical to `codex:radar-insights` (verified) — not collected;
   the replay route aliases it.
+- **Discovered-asset sweep**: the pages reference a changing set of same-origin images (QR codes,
+  dated comics, orb/bike art) that cannot be enumerated as fixed feeds. After every successful
+  poll of `codex:html`, `codex:html-en`, `deng:html`, or `deng:intro`, the collector extracts
+  `assets/...` references from the HTML (`extractAssetRefs`) and mirrors new/changed ones (cap 30
+  per sweep, dedup via feed_state.etag = cache-buster query) under synthetic feeds
+  `<site>:asset:<path>`, audited as `<site>:assets`. Served at `/assets/*` and `/deng/assets/*`
+  (prefix routes; explicit asset routes win). Replay pages also strip the upstream Cloudflare RUM
+  beacon script so the clone makes no third-party requests (GitHub contributor avatars on the deng
+  leaderboard are the accepted exception — live third-party images, not codexradar data).
 - `keepRaw: "always"`: call `saveCapture(..., {storeRaw: true})` every poll — content-hash dedup
   makes unchanged polls free.
 - `keepRaw: "sampled"`: these payloads embed live counters/timestamps so every poll differs.

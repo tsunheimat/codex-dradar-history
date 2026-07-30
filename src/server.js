@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { openArchive } from "./db.js";
-import { FEEDS, getFeed } from "./feeds.js";
+import { FEEDS, getFeed, assetFeedId, assetContentType } from "./feeds.js";
 import {
   resolveAt,
   patchCodexHtml,
@@ -276,6 +276,17 @@ function registerReplayRoutes(router, archive) {
   router.add("GET", "/deng/intro", cap("deng:intro", { contentType: CT.HTML, patch: patchIntroHtml }));
   router.add("GET", "/deng/assets/i18n.js", cap("deng:i18n", { contentType: CT.JS }));
   router.add("GET", "/deng/assets/radar-report.js", cap("deng:report-js", { contentType: CT.JS, patch: (js) => patchReportJs(js) }));
+
+  // --- swept asset mirror (exact routes above win over these prefixes) ---
+  const assetRoute = (site, mount) => (req, res, ctx) => {
+    const rel = ctx.path.slice(mount.length); // "assets/..." (decoded pathname)
+    if (!rel.startsWith("assets/") || rel.includes("..")) return notFound(ctx);
+    serveCapture(archive, assetFeedId(site, rel), ctx, {
+      contentType: assetContentType(rel),
+    });
+  };
+  router.add("GET", "/assets/", assetRoute("codex", "/"), { prefix: true });
+  router.add("GET", "/deng/assets/", assetRoute("deng", "/deng/"), { prefix: true });
 
   // --- deng API replay (mounted at /deng-api) ---
   router.add("GET", "/deng-api/api/v1/table", cap("deng:table", { contentType: CT.JSON }));

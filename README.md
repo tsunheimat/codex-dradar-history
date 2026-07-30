@@ -74,6 +74,13 @@ while touching upstream far more gently than a single open browser tab (see
 - **Time-travel toolbar.** Every cloned page gets a small `timebar.js` injected as its first
   `<head>` script; it rewrites same-origin API calls to carry the active `at=` and lets you step
   between archived versions.
+- **Discovered-asset sweep.** After each page poll the collector scans the HTML for same-origin
+  `assets/...` references (QR codes, dated comics, orb/bike art — the set changes over time) and
+  mirrors new or re-versioned ones automatically (≤ 30 per sweep, keyed by cache-buster). The
+  replayed pages therefore render fully offline; the upstream Cloudflare analytics beacon is
+  stripped so a replica page makes **no third-party requests** (the deng leaderboard's GitHub
+  contributor avatars are the one accepted exception — live `avatars.githubusercontent.com`
+  images, not codexradar data).
 
 ---
 
@@ -144,6 +151,19 @@ docker compose run --rm web node scripts/seed-fixtures.js
 
 The SQLite database (`archive.sqlite` + WAL files) persists in `./data` on the host.
 
+### Production without Docker (systemd)
+
+On a host without Docker, use the user units in `deploy/`:
+
+```sh
+mkdir -p ~/.config/systemd/user
+cp deploy/dradar2-*.service ~/.config/systemd/user/
+# edit WorkingDirectory in both units to this repo's absolute path, then:
+systemctl --user daemon-reload
+systemctl --user enable --now dradar2-web dradar2-collector
+loginctl enable-linger "$USER"   # keep them running after logout
+```
+
 ---
 
 ## Configuration
@@ -178,8 +198,10 @@ present; real environment variables win). See `.env.example`.
 | `GET /api/subscriber-count` | subscriber count |
 | `POST /api/subscribe` | stub → `{ok:false, …}` (no-op on a replica) |
 | `GET /assets/codex-logo.svg`, `/favicon.ico` | logo |
+| `GET /assets/*` | any page-referenced asset (QR codes, comics, …) mirrored by the discovered-asset sweep |
 | `GET /deng`, `/deng/`, `/deng/en`, `/deng/intro` | 分布式雷达 pages (patched) |
 | `GET /deng/assets/i18n.js`, `/deng/assets/radar-report.js` | deng assets |
+| `GET /deng/assets/*` | swept deng assets (orb/bike art, community images, …) |
 | `GET /deng-api/api/v1/{table,iq-history,events,leaderboard,radar-insights}` | deng API payloads |
 | `GET /deng-api/api/v1/avatar/<seed>.svg` | archived avatar (neutral fallback if unknown) |
 

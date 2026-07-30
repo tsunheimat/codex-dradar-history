@@ -4,7 +4,13 @@
 import { pathToFileURL } from "node:url";
 import { loadConfig } from "./config.js";
 import { openArchive } from "./db.js";
-import { FEEDS, getFeed } from "./feeds.js";
+import {
+  FEEDS,
+  getFeed,
+  ASSET_SWEEP_PAGES,
+  EXPLICIT_ASSET_PATHS,
+  assetFeedId,
+} from "./feeds.js";
 import { fetchUrl } from "./fetchers.js";
 import { runExtractor } from "./extractors.js";
 
@@ -60,6 +66,27 @@ function extractUpstreamTs(feed, body) {
   }
   return null;
 }
+
+/**
+ * extractAssetRefs(html) → [{path, query}] unique by path.
+ * Finds same-origin `assets/...` references in any of the forms the pages use:
+ * src="assets/x", src='assets/x' (inside JS string literals), url("assets/x"),
+ * url(assets/x). Paths are document-relative; query strings are cache-busters.
+ */
+export function extractAssetRefs(html) {
+  const seen = new Map();
+  const re = /["'(]((?:\.\/)?assets\/[A-Za-z0-9_\-./]+?)(\?[A-Za-z0-9_\-=&.%]*)?["')]/g;
+  const s = String(html);
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    let path = m[1].replace(/^\.\//, "");
+    if (path.includes("..")) continue;
+    if (!seen.has(path)) seen.set(path, { path, query: m[2] || "" });
+  }
+  return [...seen.values()];
+}
+
+const ASSET_SWEEP_CAP = 30;
 
 export function createCollector(config, archive) {
   function intervalMs(feed) {
@@ -158,6 +185,81 @@ export function createCollector(config, archive) {
     });
   }
 
+  /**
+   * assetSweep — mirror same-origin assets referenced by a just-captured page.
+   * An asset is (re)fetched when it has no archived capture yet, or when the
+   * page's cache-buster query for it changed (tracked in feed_state.etag).
+   * Content-hash dedup in saveCapture makes a same-bytes refetch free.
+   */
+  async function assetSweep(pageFeedId, htmlBody, sleep) {
+    const site = ASSET_SWEEP_PAGES.get(pageFeedId);
+    if (!site) return;
+    const refs = extractAssetRefs(htmlBody.toString("utf8"));
+    const todo = [];
+    for (const ref of refs) {
+      if (EXPLICIT_ASSET_PATHS.has(`${site.site}:${ref.path}`)) continue;
+      const feedId = assetFeedId(site.site, ref.path);
+      const st = archive.getFeedState(feedId);
+      const have = archive.latestCapture(feedId);
+      if (have && st && (st.etag || "") === ref.query) continue;
+      todo.push({ feedId, ref });
+      if (todo.length >= ASSET_SWEEP_CAP) break;
+    }
+    if (!todo.length) return;
+
+    const startedAt = nowIso();
+    const t0 = Date.now();
+    let stored = 0;
+    let anyOk = false;
+    let lastErr = null;
+    for (const { feedId, ref } of todo) {
+      try {
+        const url = site.origin + ref.path + ref.query;
+        const res = await fetchUrl(url, {
+          timeoutMs: 20000,
+          maxBytes: config.maxBytes,
+          userAgent: config.userAgent,
+        });
+        if (res.status >= 200 && res.status < 300 && res.body) {
+          anyOk = true;
+          const cap = archive.saveCapture({
+            feed: feedId,
+            capturedAt: nowIso(),
+            body: res.body,
+            httpStatus: res.status,
+            contentType: res.contentType,
+          });
+          if (cap.changed) stored++;
+          // Remember the cache-buster we mirrored, even when bytes were unchanged.
+          archive.setFeedState(feedId, {
+            failCount: 0,
+            backoffUntil: null,
+            lastOkAt: nowIso(),
+            etag: ref.query,
+          });
+        } else if (res.status === 404) {
+          // Referenced but gone upstream — remember so we don't refetch each poll.
+          anyOk = true;
+          archive.setFeedState(feedId, { etag: ref.query, lastOkAt: nowIso() });
+        }
+      } catch (err) {
+        lastErr = err;
+      }
+      await sleep(REQUEST_GAP_MS);
+    }
+    archive.recordRun({
+      feed: `${site.site}:assets`,
+      startedAt,
+      ok: anyOk || todo.length === 0,
+      httpStatus: anyOk ? 200 : null,
+      error: anyOk || !lastErr ? null : String(lastErr.message || lastErr),
+      durationMs: Date.now() - t0,
+      changed: stored > 0,
+      bytes: 0,
+    });
+    logLine(startedAt, `${site.site}:assets`, anyOk ? 200 : "ERR", stored, Date.now() - t0, 0);
+  }
+
   async function pollFeed(feed, sleep) {
     const startedAt = nowIso();
     const t0 = Date.now();
@@ -248,6 +350,7 @@ export function createCollector(config, archive) {
         logLine(startedAt, feed.id, res.status, changedDisp, durationMs, res.body.length);
 
         if (feed.id === "deng:events") await avatarSweep(sleep);
+        if (ASSET_SWEEP_PAGES.has(feed.id)) await assetSweep(feed.id, res.body, sleep);
         return true;
       }
 
@@ -258,7 +361,7 @@ export function createCollector(config, archive) {
     }
   }
 
-  return { intervalMs, pollFeed, avatarSweep };
+  return { intervalMs, pollFeed, avatarSweep, assetSweep };
 }
 
 // ----------------------------------------------------------------- CLI runner
