@@ -1,0 +1,287 @@
+<title>单元历史 · dradar2 archive</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<style>
+:root{
+  --bg:#04070a; --panel:#0a100a; --panel-2:#0c140d; --text:#c9e8d2; --dim:#9fc4ad;
+  --muted:#5d8a68; --accent:#00e5ff; --good:#39ff14; --bad:#ff5b5b; --warn:#ffb000; --leased:#4f8cff;
+  --line:#16261b; --line-2:#1d3324; --ink:#e8fff4;
+  --mono:"SFMono-Regular",Menlo,Consolas,"Liberation Mono","DejaVu Sans Mono",monospace;
+}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:14px;line-height:1.45;
+  background-image:radial-gradient(1200px 600px at 80% -10%, rgba(0,229,255,.05), transparent 60%),
+    repeating-linear-gradient(to bottom, rgba(0,0,0,.16) 0 2px, transparent 2px 4px);min-height:100vh}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1080px;margin:0 auto;padding:14px clamp(10px,3vw,26px) 60px}
+header.top{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:flex-end;border-bottom:1px solid var(--line-2);padding-bottom:12px;margin-bottom:16px}
+.brand{display:flex;flex-direction:column;gap:1px}
+.brand .zh{font-size:20px;font-weight:700;color:var(--ink);letter-spacing:.5px}
+.brand .zh .dot{color:var(--accent)}
+.brand .en{font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+nav.links{display:flex;flex-wrap:wrap;gap:4px 6px;margin-left:auto;align-items:center}
+nav.links a{padding:4px 9px;border:1px solid var(--line-2);border-radius:5px;font-size:12px;color:var(--dim);background:rgba(10,20,13,.5);white-space:nowrap}
+nav.links a:hover{border-color:var(--accent);color:var(--ink);text-decoration:none}
+nav.links a.active{border-color:var(--accent);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(0,229,255,.25)}
+nav.links a.ext{color:var(--muted);border-style:dashed}
+.tagline{width:100%;color:var(--muted);font-size:12px;margin-top:2px}
+.tagline b{color:var(--good);font-weight:600}
+.picker{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;padding:12px;background:var(--panel);
+  border:1px solid var(--line-2);border-radius:8px;margin-bottom:16px}
+@media(max-width:620px){.picker{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:3px;position:relative}
+.f label{font-size:11px;color:var(--muted);letter-spacing:.5px}
+.f input,.f select{background:var(--panel-2);border:1px solid var(--line-2);border-radius:5px;color:var(--text);
+  font-family:inherit;font-size:12.5px;padding:6px 8px;width:100%}
+.f input:focus,.f select:focus{outline:none;border-color:var(--accent)}
+.combo-list{position:absolute;top:100%;left:0;right:0;z-index:30;background:#08110b;border:1px solid var(--line-2);
+  border-radius:6px;margin-top:3px;max-height:260px;overflow:auto;box-shadow:0 12px 30px -12px #000;display:none}
+.combo-list.open{display:block}
+.combo-item{padding:6px 9px;cursor:pointer;border-bottom:1px solid var(--line)}
+.combo-item:hover,.combo-item.hi{background:rgba(0,229,255,.08)}
+.combo-item .id{color:var(--accent);font-size:12px}
+.combo-item .ti{color:var(--dim);font-size:11px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.combo-item .meta{color:var(--muted);font-size:10.5px}
+.summary{background:var(--panel);border:1px solid var(--line-2);border-radius:8px;padding:12px 14px;margin-bottom:16px;display:none}
+.summary.show{display:block}
+.summary h2{margin:0 0 6px;font-size:15px;color:var(--ink);word-break:break-word}
+.summary .key{color:var(--accent);font-size:12px;word-break:break-all}
+.summary .stats{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:8px;color:var(--dim);font-size:12px}
+.summary .stats b{color:var(--ink)}
+.spark{margin-top:10px}
+.spark svg{display:block;width:100%;height:64px}
+.spark .cap{color:var(--muted);font-size:10.5px;margin-bottom:2px}
+/* timeline */
+.timeline{position:relative;margin:6px 0 0 8px;padding-left:26px}
+.timeline::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:2px;
+  background:linear-gradient(to bottom,var(--line-2),var(--line))}
+.node{position:relative;margin-bottom:14px}
+.node .dot{position:absolute;left:-26px;top:4px;width:13px;height:13px;border-radius:50%;
+  border:2px solid var(--bg);box-shadow:0 0 0 1px var(--line-2),0 0 8px currentColor}
+.node .card{background:var(--panel);border:1px solid var(--line-2);border-radius:8px;padding:10px 12px}
+.node.latest .card{border-color:var(--accent);box-shadow:0 0 0 1px rgba(0,229,255,.18)}
+.node .hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.state{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;
+  border:1px solid;text-transform:uppercase;letter-spacing:.5px}
+.node .period{color:var(--muted);font-size:11.5px;margin-left:auto;font-variant-numeric:tabular-nums}
+.node .latestflag{color:var(--accent);font-size:10.5px;border:1px solid var(--accent);border-radius:4px;padding:0 5px}
+.node .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px 16px;margin-top:8px}
+.kv{display:flex;flex-direction:column;gap:1px}
+.kv .k{color:var(--muted);font-size:10.5px}
+.kv .v{color:var(--text);font-size:13px;font-variant-numeric:tabular-nums}
+.kv .v.good{color:var(--good)}.kv .v.bad{color:var(--bad)}.kv .v.acc{color:var(--accent)}
+.empty{padding:40px 12px;text-align:center;color:var(--muted)}
+.empty .big{color:var(--dim);font-size:14px;margin-bottom:6px}
+.empty code{color:var(--accent);background:var(--panel-2);padding:2px 6px;border-radius:4px}
+.hint{color:var(--muted);font-size:12px;padding:20px 4px;text-align:center}
+footer{color:var(--muted);font-size:11px;text-align:center;margin-top:26px;border-top:1px solid var(--line);padding-top:14px}
+footer a{color:var(--dim)}
+.loading{opacity:.55}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="zh">单元历史<span class="dot">·</span>雷达</div>
+      <div class="en">dradar2 · benchmark cell timeline</div>
+    </div>
+    <nav class="links" id="nav"></nav>
+    <div class="tagline">上游只显示每个单元的 <b style="color:var(--warn)">最新状态</b> · 本存档 <b>保留完整状态变迁</b>
+      <span style="color:var(--muted)">— upstream shows each cell's latest state only; we keep the full history.</span></div>
+  </header>
+
+  <div class="picker">
+    <div class="f">
+      <label>任务 Task（可搜索 searchable）</label>
+      <input id="taskInput" placeholder="搜索任务 id / 标题…" autocomplete="off">
+      <div class="combo-list" id="taskList"></div>
+    </div>
+    <div class="f">
+      <label>模型 Model</label>
+      <input id="modelInput" list="dlModel" placeholder="gpt-5.6-sol">
+      <datalist id="dlModel"><option>gpt-5.6-sol</option><option>gpt-5.6-terra</option><option>gpt-5.6-luna</option></datalist>
+    </div>
+    <div class="f">
+      <label>强度 Effort</label>
+      <select id="effortInput">
+        <option value="">选择 pick…</option>
+        <option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option><option>ultra</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="summary" id="summary"></div>
+  <div id="body"><div class="hint">选择任务 + 模型 + 强度以查看该单元的状态时间线。<br>Pick a task, model and effort to see this cell's archived state timeline.</div></div>
+
+  <footer>
+    数据来自 <a href="https://codexradar.com" target="_blank" rel="noopener noreferrer">Codex 雷达 codexradar.com</a>
+    · dradar2 archive replica · 只读长期存档
+  </footer>
+</div>
+
+<script>
+"use strict";
+(function(){
+  const TZ="Asia/Shanghai"; const API="/archive-api";
+  const NAV=[["主站 Codex","/"],["分布式 Deng","/deng/"],["长期历史 History","/history"],["事件 Events","/history/events"],["单元 Cells","/history/cells",true],["采集状态 Sources","/sources"]];
+  (function(){ const nav=document.getElementById("nav");
+    for(const [label,href,active] of NAV){ const a=document.createElement("a"); a.href=href; a.textContent=label; if(active)a.className="active"; nav.appendChild(a); }
+    const e=document.createElement("a"); e.href="https://codexradar.com"; e.target="_blank"; e.rel="noopener noreferrer"; e.className="ext"; e.textContent="数据来自 Codex 雷达 ↗"; nav.appendChild(e); })();
+
+  const dtf=new Intl.DateTimeFormat("zh-CN",{timeZone:TZ,year:"2-digit",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false});
+  const dtfS=new Intl.DateTimeFormat("zh-CN",{timeZone:TZ,month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false});
+  function fmt(iso){ const t=Date.parse(iso); if(Number.isNaN(t))return iso||"–"; return dtf.format(t).replace(/\//g,"-"); }
+  function fmtS(iso){ const t=Date.parse(iso); if(Number.isNaN(t))return iso||"–"; return dtfS.format(t).replace(/\//g,"-"); }
+  function dur(a,b){ const ta=Date.parse(a),tb=Date.parse(b); if(Number.isNaN(ta)||Number.isNaN(tb))return ""; let s=Math.max(0,(tb-ta)/1000);
+    const d=Math.floor(s/86400); s-=d*86400; const h=Math.floor(s/3600); s-=h*3600; const m=Math.floor(s/60);
+    if(d)return d+"天"+h+"h"; if(h)return h+"h"+m+"m"; return m+"m"; }
+  async function getJSON(path){ const r=await fetch(path,{headers:{accept:"application/json"}}); if(!r.ok)throw new Error("HTTP "+r.status); return r.json(); }
+  const el=id=>document.getElementById(id);
+
+  const STATE_COLORS={ open:"var(--muted)", queued:"var(--warn)", leased:"var(--leased)", running:"var(--good)", cooldown:"var(--accent)", settled:"var(--dim)" };
+  function stateColor(st){ return STATE_COLORS[st]||"var(--dim)"; }
+
+  // ---- task combobox ----
+  let TASKS=[]; let selectedTask=null; let hi=-1; let filtered=[];
+  async function initTasks(){
+    try{ TASKS=await getJSON(API+"/tasks"); if(!Array.isArray(TASKS))TASKS=[]; }
+    catch(e){ TASKS=[]; }
+  }
+  function renderList(q){
+    const box=el("taskList"); q=(q||"").toLowerCase().trim();
+    filtered = (!q?TASKS.slice(0,60):TASKS.filter(t=>((t.id||"")+" "+(t.title||"")).toLowerCase().includes(q)).slice(0,60));
+    box.innerHTML=""; hi=-1;
+    if(!filtered.length){ box.classList.remove("open"); return; }
+    for(let i=0;i<filtered.length;i++){ const t=filtered[i];
+      const it=document.createElement("div"); it.className="combo-item"; it.dataset.i=i;
+      const id=document.createElement("span"); id.className="id"; id.textContent=t.id||"(no id)";
+      const ti=document.createElement("span"); ti.className="ti"; ti.textContent=t.title||"";
+      const meta=document.createElement("span"); meta.className="meta"; meta.textContent=[t.language,t.category].filter(Boolean).join(" · ");
+      it.appendChild(id); it.appendChild(ti); if(meta.textContent)it.appendChild(meta);
+      it.addEventListener("mousedown",ev=>{ ev.preventDefault(); pickTask(t); });
+      box.appendChild(it);
+    }
+    box.classList.add("open");
+  }
+  function pickTask(t){ selectedTask=t; el("taskInput").value=(t.id||""); el("taskList").classList.remove("open"); maybeLoad(); }
+  el("taskInput").addEventListener("input",e=>{ selectedTask=null; renderList(e.target.value); });
+  el("taskInput").addEventListener("focus",e=>{ renderList(e.target.value); });
+  el("taskInput").addEventListener("blur",()=>{ setTimeout(()=>el("taskList").classList.remove("open"),150); });
+  el("taskInput").addEventListener("keydown",e=>{
+    const box=el("taskList"); const items=[...box.children];
+    if(e.key==="ArrowDown"){ e.preventDefault(); hi=Math.min(items.length-1,hi+1); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); hi=Math.max(0,hi-1); }
+    else if(e.key==="Enter"){ if(hi>=0&&filtered[hi]){ pickTask(filtered[hi]); } return; }
+    else return;
+    items.forEach((it,i)=>it.classList.toggle("hi",i===hi));
+    if(items[hi])items[hi].scrollIntoView({block:"nearest"});
+  });
+  el("modelInput").addEventListener("change",maybeLoad);
+  el("modelInput").addEventListener("input",()=>{ /* wait for blur/change */ });
+  el("effortInput").addEventListener("change",maybeLoad);
+
+  function currentTaskId(){ if(selectedTask)return selectedTask.id; const v=el("taskInput").value.trim(); return v||null; }
+  function maybeLoad(){ const task=currentTaskId(), model=el("modelInput").value.trim(), effort=el("effortInput").value.trim();
+    if(task&&model&&effort) load(task,model,effort); }
+
+  async function load(task,model,effort){
+    const body=el("body"); body.classList.add("loading");
+    try{
+      const qs=new URLSearchParams({task,model,effort});
+      const data=await getJSON(API+"/cell-history?"+qs.toString());
+      const rows=(data&&data.rows)||[];
+      renderSummary(data&&data.cellKey||(task+"|"+model+"|"+effort), rows, task);
+      renderTimeline(rows);
+    }catch(e){
+      el("summary").classList.remove("show");
+      body.innerHTML='<div class="empty"><div class="big">加载失败 Load failed</div>'+e.message+'</div>';
+    }finally{ body.classList.remove("loading"); }
+  }
+
+  function num(v,dec){ return v==null||!isFinite(v)?"–":Number(v).toFixed(dec==null?2:dec); }
+  function pct(p){ return p==null||!isFinite(p)?"–":(Number(p)*100).toFixed(0)+"%"; }
+
+  function renderSummary(cellKey, rows, task){
+    const s=el("summary"); s.classList.add("show"); s.innerHTML="";
+    const taskObj=TASKS.find(t=>t.id===task);
+    const h=document.createElement("h2"); h.textContent=taskObj&&taskObj.title?taskObj.title:cellKey; s.appendChild(h);
+    const k=document.createElement("div"); k.className="key"; k.textContent=cellKey; s.appendChild(k);
+    const st=document.createElement("div"); st.className="stats";
+    const span=rows.length?dur(rows[0].firstSeen,rows[rows.length-1].lastSeen):"–";
+    st.innerHTML="<span>状态记录 <b>"+rows.length+"</b> 段</span>"+
+      "<span>观察跨度 <b>"+span+"</b></span>"+
+      (taskObj?("<span>语言 <b>"+(taskObj.language||"–")+"</b></span><span>仓库 "+(taskObj.repo?'<a href="'+esc(taskObj.repo)+'" target="_blank" rel="noopener noreferrer">repo ↗</a>':"–")+"</span>"):"");
+    s.appendChild(st);
+    // rate sparkline across periods
+    const spk=buildSpark(rows); if(spk)s.appendChild(spk);
+  }
+  function esc(u){ return String(u).replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+
+  function buildSpark(rows){
+    const pts=rows.map((r,i)=>({i,v:r.payload&&r.payload.rate!=null?Number(r.payload.rate):null})).filter(p=>p.v!=null);
+    if(pts.length<2)return null;
+    const wrap=document.createElement("div"); wrap.className="spark";
+    const cap=document.createElement("div"); cap.className="cap"; cap.textContent="通过率走势 pass-rate over recorded states (0–100%)"; wrap.appendChild(cap);
+    const W=600,H=64,pad=6; const n=rows.length;
+    const X=i=>pad+ (n<=1?0:i/(n-1))*(W-2*pad);
+    const Y=v=>H-pad-(v)*(H-2*pad);
+    const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+    svg.setAttribute("viewBox","0 0 "+W+" "+H); svg.setAttribute("preserveAspectRatio","none");
+    let d="";
+    rows.forEach((r,i)=>{ const v=r.payload&&r.payload.rate!=null?Number(r.payload.rate):null; if(v==null)return;
+      d+=(d?"L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1)+" "; });
+    const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d",d); path.setAttribute("fill","none"); path.setAttribute("stroke","var(--good)"); path.setAttribute("stroke-width","2"); path.setAttribute("vector-effect","non-scaling-stroke");
+    svg.appendChild(path);
+    rows.forEach((r,i)=>{ const v=r.payload&&r.payload.rate!=null?Number(r.payload.rate):null; if(v==null)return;
+      const c=document.createElementNS("http://www.w3.org/2000/svg","circle"); c.setAttribute("cx",X(i)); c.setAttribute("cy",Y(v)); c.setAttribute("r","2.5"); c.setAttribute("fill",stateColor(r.payload.st)); svg.appendChild(c); });
+    wrap.appendChild(svg); return wrap;
+  }
+
+  function renderTimeline(rows){
+    const body=el("body");
+    if(!rows.length){
+      body.innerHTML='<div class="empty"><div class="big">该单元暂无存档状态 No archived states for this cell</div>'+
+        '确认任务/模型/强度组合存在，或先运行采集器 verify the combo exists, or run the collector: <code>node src/collector.js</code></div>';
+      return;
+    }
+    const tl=document.createElement("div"); tl.className="timeline";
+    // newest first
+    const ordered=rows.slice().reverse();
+    ordered.forEach((r,idx)=>{
+      const p=r.payload||{}; const isLatest=idx===0;
+      const node=document.createElement("div"); node.className="node"+(isLatest?" latest":"");
+      const dot=document.createElement("div"); dot.className="dot"; dot.style.color=stateColor(p.st); dot.style.background=stateColor(p.st); node.appendChild(dot);
+      const card=document.createElement("div"); card.className="card";
+      const hd=document.createElement("div"); hd.className="hd";
+      const badge=document.createElement("span"); badge.className="state";
+      badge.style.color=stateColor(p.st); badge.style.borderColor=stateColor(p.st); badge.textContent=p.st||"?"; hd.appendChild(badge);
+      if(isLatest){ const lf=document.createElement("span"); lf.className="latestflag"; lf.textContent="最新 latest"; hd.appendChild(lf); }
+      const per=document.createElement("span"); per.className="period";
+      per.textContent=fmtS(r.firstSeen)+" → "+fmtS(r.lastSeen)+"  ("+dur(r.firstSeen,r.lastSeen)+")"; hd.appendChild(per);
+      card.appendChild(hd);
+      const grid=document.createElement("div"); grid.className="grid";
+      const rate = p.rate!=null?p.rate:(p.total_n?p.total_p/p.total_n:null);
+      const kvs=[
+        ["近窗通过率 rate", pct(p.rate), rate!=null&&Number(p.rate)>=0.5?"good":(p.rate!=null&&Number(p.rate)<0.5?"bad":"")],
+        ["近窗 n/p", (p.n!=null?p.n:"–")+" / "+(p.p!=null?p.p:"–"), ""],
+        ["累计通过 total", (p.total_p!=null?p.total_p:"–")+" / "+(p.total_n!=null?p.total_n:"–"), ""],
+        ["乘数 mult", num(p.mult,3), "acc"],
+        ["最近判定 last graded", p.last_graded_at?fmt(p.last_graded_at):"–", ""],
+        ["最近得分 last pts", p.last_points!=null?num(p.last_points,1):"–", ""],
+        ["单价 cost", p.cost!=null?"$"+num(p.cost,2):"–", ""],
+        ["样本数 ns", p.ns!=null?p.ns:"–", ""],
+      ];
+      for(const [k,v,cls] of kvs){ const kv=document.createElement("div"); kv.className="kv";
+        const kk=document.createElement("div"); kk.className="k"; kk.textContent=k;
+        const vv=document.createElement("div"); vv.className="v"+(cls?(" "+cls):""); vv.textContent=v;
+        kv.appendChild(kk); kv.appendChild(vv); grid.appendChild(kv); }
+      card.appendChild(grid);
+      node.appendChild(card); tl.appendChild(node);
+    });
+    body.innerHTML=""; body.appendChild(tl);
+  }
+
+  initTasks();
+})();
+</script>

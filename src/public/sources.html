@@ -1,0 +1,282 @@
+<title>采集状态 · dradar2 archive</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<style>
+:root{
+  --bg:#04070a; --panel:#0a100a; --panel-2:#0c140d; --text:#c9e8d2; --dim:#9fc4ad;
+  --muted:#5d8a68; --accent:#00e5ff; --good:#39ff14; --bad:#ff5b5b; --warn:#ffb000; --leased:#4f8cff;
+  --line:#16261b; --line-2:#1d3324; --ink:#e8fff4;
+  --mono:"SFMono-Regular",Menlo,Consolas,"Liberation Mono","DejaVu Sans Mono",monospace;
+}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:14px;line-height:1.45;
+  background-image:radial-gradient(1200px 600px at 80% -10%, rgba(0,229,255,.05), transparent 60%),
+    repeating-linear-gradient(to bottom, rgba(0,0,0,.16) 0 2px, transparent 2px 4px);min-height:100vh}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1240px;margin:0 auto;padding:14px clamp(10px,3vw,26px) 60px}
+header.top{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:flex-end;border-bottom:1px solid var(--line-2);padding-bottom:12px;margin-bottom:16px}
+.brand{display:flex;flex-direction:column;gap:1px}
+.brand .zh{font-size:20px;font-weight:700;color:var(--ink);letter-spacing:.5px}
+.brand .zh .dot{color:var(--accent)}
+.brand .en{font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+nav.links{display:flex;flex-wrap:wrap;gap:4px 6px;margin-left:auto;align-items:center}
+nav.links a{padding:4px 9px;border:1px solid var(--line-2);border-radius:5px;font-size:12px;color:var(--dim);background:rgba(10,20,13,.5);white-space:nowrap}
+nav.links a:hover{border-color:var(--accent);color:var(--ink);text-decoration:none}
+nav.links a.active{border-color:var(--accent);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(0,229,255,.25)}
+nav.links a.ext{color:var(--muted);border-style:dashed}
+.tagline{width:100%;color:var(--muted);font-size:12px;margin-top:2px}
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.toolbar .status{font-size:12px;color:var(--muted)}
+.toolbar .status b{color:var(--good)}
+button.btn{background:rgba(0,229,255,.1);border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:12.5px;padding:5px 13px;border-radius:5px;cursor:pointer}
+button.btn:hover{background:rgba(0,229,255,.18)}
+label.auto{font-size:12px;color:var(--dim);display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.tile{background:var(--panel);border:1px solid var(--line-2);border-radius:9px;padding:12px 14px;position:relative;overflow:hidden}
+.tile::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,229,255,.5),transparent)}
+.tile .k{color:var(--muted);font-size:11px;letter-spacing:.5px}
+.tile .v{color:var(--ink);font-size:22px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+.tile .v small{font-size:12px;color:var(--dim);font-weight:400}
+.tile .sub{color:var(--muted);font-size:10.5px;margin-top:2px}
+h2.sec{font-size:14px;color:var(--dim);margin:22px 0 8px;letter-spacing:.5px;display:flex;align-items:baseline;gap:8px}
+h2.sec .en{color:var(--muted);font-size:11px;font-weight:400;text-transform:uppercase}
+.tablewrap{border:1px solid var(--line-2);border-radius:8px;overflow-x:auto;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:12.5px}
+thead th{position:sticky;top:0;background:#0b140d;color:var(--dim);text-align:left;font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+thead th.num{text-align:right}
+tbody td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:hover{background:rgba(0,229,255,.04)}
+td.feed{color:var(--accent);white-space:nowrap;font-weight:600}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.age{white-space:nowrap;font-variant-numeric:tabular-nums}
+.age.fresh{color:var(--good)}.age.ok{color:var(--dim)}.age.stale{color:var(--warn)}.age.old{color:var(--bad)}.age.never{color:var(--muted)}
+.bar{height:7px;border-radius:4px;background:var(--panel-2);overflow:hidden;min-width:60px;border:1px solid var(--line)}
+.bar > i{display:block;height:100%;background:linear-gradient(90deg,#0a6,#0e5)}
+.streak{color:var(--muted)}
+.streak.bad{color:var(--bad);font-weight:700}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.dot.ok{background:var(--good);box-shadow:0 0 6px var(--good)}
+.dot.err{background:var(--bad);box-shadow:0 0 6px var(--bad)}
+td.err-msg{color:var(--bad);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+td.time{color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.chg{color:var(--good);font-weight:700}
+.chg.zero{color:var(--muted);font-weight:400}
+.tables-mini{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px 20px;background:var(--panel);border:1px solid var(--line-2);border-radius:8px;padding:12px 14px}
+.tables-mini .row{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:3px 0}
+.tables-mini .row .n{color:var(--dim)}.tables-mini .row .c{color:var(--ink);font-variant-numeric:tabular-nums}
+.empty{padding:30px 12px;text-align:center;color:var(--muted)}
+.empty code{color:var(--accent);background:var(--panel-2);padding:2px 6px;border-radius:4px}
+.err{color:var(--bad);padding:8px 0;font-size:12px}
+footer{color:var(--muted);font-size:11px;text-align:center;margin-top:26px;border-top:1px solid var(--line);padding-top:14px}
+footer a{color:var(--dim)}
+.loading{opacity:.6}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="zh">采集状态<span class="dot" style="box-shadow:none;width:auto;height:auto;background:none;color:var(--accent);margin:0">·</span>雷达</div>
+      <div class="en">dradar2 · collector health &amp; sources</div>
+    </div>
+    <nav class="links" id="nav"></nav>
+    <div class="tagline">采集器对上游公开 GET 端点的抓取健康度 · 内容哈希去重 · 存储永久保留
+      <span style="color:var(--muted)">— collector health against upstream's public GET endpoints; content-hash dedup; kept forever.</span></div>
+  </header>
+
+  <div class="toolbar">
+    <button class="btn" id="refresh">刷新 Refresh</button>
+    <label class="auto"><input type="checkbox" id="autoChk"> 自动刷新 auto (30s)</label>
+    <span class="status" id="status"></span>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <h2 class="sec">数据源健康 <span class="en">feed health · last capture / versions / stored bytes / error streak</span></h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th>数据源 feed</th>
+        <th class="num">最近抓取 last capture</th>
+        <th class="num">版本 versions</th>
+        <th class="num">抓取次数 captures</th>
+        <th class="num">最近变化 last change</th>
+        <th class="num">存储 stored</th>
+        <th>占比 share</th>
+        <th class="num">错误连击 streak</th>
+      </tr></thead>
+      <tbody id="feedBody"></tbody>
+    </table>
+  </div>
+
+  <h2 class="sec">最近采集运行 <span class="en">recent collection runs</span></h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th>时间 time · UTC+8</th>
+        <th>数据源 feed</th>
+        <th>状态 status</th>
+        <th class="num">变化 changed</th>
+        <th class="num">字节 bytes</th>
+        <th class="num">耗时 ms</th>
+        <th>错误 error</th>
+      </tr></thead>
+      <tbody id="runBody"></tbody>
+    </table>
+  </div>
+
+  <h2 class="sec">表行数 <span class="en">table row counts</span></h2>
+  <div class="tables-mini" id="tablesMini"></div>
+
+  <footer>
+    数据来自 <a href="https://codexradar.com" target="_blank" rel="noopener noreferrer">Codex 雷达 codexradar.com</a>
+    · dradar2 archive replica · 只读长期存档
+  </footer>
+</div>
+
+<script>
+"use strict";
+(function(){
+  const TZ="Asia/Shanghai"; const API="/archive-api";
+  const NAV=[["主站 Codex","/"],["分布式 Deng","/deng/"],["长期历史 History","/history"],["事件 Events","/history/events"],["单元 Cells","/history/cells"],["采集状态 Sources","/sources",true]];
+  (function(){ const nav=document.getElementById("nav");
+    for(const [label,href,active] of NAV){ const a=document.createElement("a"); a.href=href; a.textContent=label; if(active)a.className="active"; nav.appendChild(a); }
+    const e=document.createElement("a"); e.href="https://codexradar.com"; e.target="_blank"; e.rel="noopener noreferrer"; e.className="ext"; e.textContent="数据来自 Codex 雷达 ↗"; nav.appendChild(e); })();
+
+  const el=id=>document.getElementById(id);
+  const dtf=new Intl.DateTimeFormat("zh-CN",{timeZone:TZ,month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+  function fmtTime(iso){ const t=Date.parse(iso); if(Number.isNaN(t))return iso||"–"; return dtf.format(t).replace(/\//g,"-"); }
+  function g(o,camel,snake){ if(!o)return undefined; return o[camel]!=null?o[camel]:o[snake]; }
+  async function getJSON(path){ const r=await fetch(path,{headers:{accept:"application/json"}}); if(!r.ok)throw new Error("HTTP "+r.status); return r.json(); }
+
+  function bytesH(n){ n=Number(n)||0; if(n<1024)return n+" B"; if(n<1048576)return (n/1024).toFixed(1)+" KB"; if(n<1073741824)return (n/1048576).toFixed(1)+" MB"; return (n/1073741824).toFixed(2)+" GB"; }
+  function ageH(ms){ if(ms==null)return "—"; let s=ms/1000; if(s<0)s=0;
+    if(s<60)return Math.floor(s)+"s"; if(s<3600)return Math.floor(s/60)+"m"; if(s<86400)return Math.floor(s/3600)+"h"; return Math.floor(s/86400)+"d"; }
+  function ageClass(ms){ if(ms==null)return "never"; if(ms<3.6e6)return "fresh"; if(ms<2.16e7)return "ok"; if(ms<8.64e7)return "stale"; return "old"; }
+
+  let timer=null;
+  async function loadAll(){
+    const wrap=document.querySelector(".wrap"); wrap.classList.add("loading");
+    el("status").textContent="加载中 loading…";
+    try{
+      const [health, runs] = await Promise.all([
+        getJSON(API+"/health").catch(e=>({__err:e.message})),
+        getJSON(API+"/runs?limit=300").catch(e=>({__err:e.message, runs:[]})),
+      ]);
+      const nowMs = health && health.now ? Date.parse(health.now) : Date.now();
+      const runList = Array.isArray(runs)?runs:(runs&&runs.runs)||[];
+      renderTiles(health, runList, nowMs);
+      renderFeeds(health, runList, nowMs);
+      renderRuns(runList);
+      renderTables(health);
+      el("status").innerHTML='更新于 <b>'+fmtTime(new Date(nowMs).toISOString())+'</b> · 时区 UTC+8';
+    }catch(e){ el("status").innerHTML='<span style="color:var(--bad)">加载失败 '+e.message+'</span>'; }
+    finally{ wrap.classList.remove("loading"); }
+  }
+
+  function feedList(health){ const f=health&&health.feeds; return Array.isArray(f)?f:[]; }
+  function db(health){ return (health&&health.db)||{}; }
+
+  function renderTiles(health, runList, nowMs){
+    const feeds=feedList(health); const d=db(health);
+    const totalCaptures=feeds.reduce((a,f)=>a+(Number(g(f,"captures","captures"))||0),0);
+    const totalVersions=feeds.reduce((a,f)=>a+(Number(g(f,"versions","versions"))||0),0);
+    const okRuns=runList.filter(r=>r.ok===1||r.ok===true).length;
+    const okRate=runList.length?Math.round(okRuns/runList.length*100):null;
+    const tiles=[
+      ["数据库大小 DB size", bytesH(g(d,"dbBytes","db_bytes")), d?("blob "+bytesH(g(d,"blobBytes","blob_bytes"))):""],
+      ["Blob 数 blobs", (g(d,"blobCount","blob_count")!=null?Number(g(d,"blobCount","blob_count")).toLocaleString("en-US"):"–"), "去重内容 unique bodies"],
+      ["数据源 feeds", feeds.length||"–", totalVersions.toLocaleString("en-US")+" 版本 versions"],
+      ["抓取总数 captures", totalCaptures.toLocaleString("en-US"), "内容哈希去重 dedup"],
+      ["近期成功率 recent ok", okRate==null?"–":okRate+"%", runList.length+" 次运行 runs"],
+    ];
+    const box=el("tiles"); box.innerHTML="";
+    for(const [k,v,sub] of tiles){ const t=document.createElement("div"); t.className="tile";
+      const kk=document.createElement("div"); kk.className="k"; kk.textContent=k;
+      const vv=document.createElement("div"); vv.className="v"; vv.textContent=v;
+      const ss=document.createElement("div"); ss.className="sub"; ss.textContent=sub||"";
+      t.appendChild(kk); t.appendChild(vv); t.appendChild(ss); box.appendChild(t); }
+  }
+
+  function streaksByFeed(runList){
+    // consecutive failures from the newest run per feed (runs assumed newest-first)
+    const seen=new Set(); const streak=new Map(); const done=new Set();
+    for(const r of runList){ const f=r.feed; if(done.has(f))continue;
+      const ok=(r.ok===1||r.ok===true);
+      if(!streak.has(f))streak.set(f,0);
+      if(ok){ done.add(f); }
+      else { streak.set(f,streak.get(f)+1); }
+    }
+    return streak;
+  }
+
+  function renderFeeds(health, runList, nowMs){
+    const feeds=feedList(health).slice().sort((a,b)=> (a.feed||"")<(b.feed||"")?-1:1);
+    const tb=el("feedBody"); tb.innerHTML="";
+    if(!feeds.length){
+      const tr=document.createElement("tr"); const td=document.createElement("td"); td.colSpan=8;
+      td.innerHTML='<div class="empty">存档为空 archive is empty — 运行采集器 run the collector: <code>node src/collector.js</code></div>';
+      tr.appendChild(td); tb.appendChild(tr); return;
+    }
+    const streaks=streaksByFeed(runList);
+    const maxBytes=Math.max(1,...feeds.map(f=>Number(g(f,"blobBytes","blob_bytes"))||0));
+    for(const f of feeds){
+      const tr=document.createElement("tr");
+      const lastCap=g(f,"lastCapturedAt","last_captured_at");
+      const lastChg=g(f,"lastChangedAt","last_changed_at");
+      const capMs=lastCap?nowMs-Date.parse(lastCap):null;
+      const chgMs=lastChg?nowMs-Date.parse(lastChg):null;
+      const blobBytes=Number(g(f,"blobBytes","blob_bytes"))||0;
+      const td=(cls,txt)=>{ const c=document.createElement("td"); if(cls)c.className=cls; if(txt!=null)c.textContent=txt; return c; };
+      tr.appendChild(td("feed", f.feed||"–"));
+      const ca=td("num age "+ageClass(capMs)); ca.textContent=lastCap?ageH(capMs)+" 前":"从未 never"; ca.title=lastCap||""; tr.appendChild(ca);
+      tr.appendChild(td("num", (g(f,"versions","versions")!=null?Number(g(f,"versions","versions")).toLocaleString("en-US"):"–")));
+      tr.appendChild(td("num", (g(f,"captures","captures")!=null?Number(g(f,"captures","captures")).toLocaleString("en-US"):"–")));
+      const cg_=td("num age "+ageClass(chgMs)); cg_.textContent=lastChg?ageH(chgMs)+" 前":"—"; cg_.title=lastChg||""; tr.appendChild(cg_);
+      tr.appendChild(td("num", bytesH(blobBytes)));
+      const shareTd=td(""); const bar=document.createElement("div"); bar.className="bar";
+      const i=document.createElement("i"); i.style.width=Math.max(2,Math.round(blobBytes/maxBytes*100))+"%"; bar.appendChild(i); shareTd.appendChild(bar); tr.appendChild(shareTd);
+      const sN=streaks.get(f.feed)||0; const stTd=td("num"); const sp=document.createElement("span"); sp.className="streak"+(sN>0?" bad":""); sp.textContent=sN>0?("✗ "+sN):"0"; stTd.appendChild(sp); tr.appendChild(stTd);
+      tb.appendChild(tr);
+    }
+  }
+
+  function renderRuns(runList){
+    const tb=el("runBody"); tb.innerHTML="";
+    if(!runList.length){
+      const tr=document.createElement("tr"); const td=document.createElement("td"); td.colSpan=7;
+      td.innerHTML='<div class="empty">暂无运行记录 no runs yet — 运行采集器 run the collector: <code>node src/collector.js</code></div>';
+      tr.appendChild(td); tb.appendChild(tr); return;
+    }
+    for(const r of runList.slice(0,120)){
+      const tr=document.createElement("tr");
+      const ok=(r.ok===1||r.ok===true);
+      const td=(cls)=>{ const c=document.createElement("td"); if(cls)c.className=cls; return c; };
+      const t=td("time"); t.textContent=fmtTime(g(r,"startedAt","started_at")); tr.appendChild(t);
+      const fe=td("feed"); fe.textContent=r.feed||"–"; tr.appendChild(fe);
+      const st=td(""); const dot=document.createElement("span"); dot.className="dot "+(ok?"ok":"err"); st.appendChild(dot);
+      const hs=g(r,"httpStatus","http_status"); const sTxt=document.createElement("span"); sTxt.textContent=ok?("OK "+(hs!=null?hs:"200")):("FAIL "+(hs!=null?hs:"")); sTxt.style.color=ok?"var(--dim)":"var(--bad)"; st.appendChild(sTxt); tr.appendChild(st);
+      const ch=Number(r.changed)||0; const cc=td("num"); const cs=document.createElement("span"); cs.className="chg"+(ch>0?"":" zero"); cs.textContent=ch>0?("+"+ch):"0"; cc.appendChild(cs); tr.appendChild(cc);
+      const by=td("num"); by.textContent=r.bytes!=null?bytesH(r.bytes):"–"; tr.appendChild(by);
+      const dm=td("num"); dm.textContent=g(r,"durationMs","duration_ms")!=null?Math.round(g(r,"durationMs","duration_ms")):"–"; tr.appendChild(dm);
+      const er=td("err-msg"); er.textContent=r.error||""; er.title=r.error||""; tr.appendChild(er);
+      tb.appendChild(tr);
+    }
+  }
+
+  function renderTables(health){
+    const box=el("tablesMini"); box.innerHTML="";
+    const tables=(db(health).tables)||{};
+    const names=Object.keys(tables);
+    if(!names.length){ box.innerHTML='<div style="color:var(--muted)">—</div>'; return; }
+    names.sort();
+    for(const n of names){ const row=document.createElement("div"); row.className="row";
+      const nn=document.createElement("span"); nn.className="n"; nn.textContent=n;
+      const cc=document.createElement("span"); cc.className="c"; cc.textContent=Number(tables[n]).toLocaleString("en-US");
+      row.appendChild(nn); row.appendChild(cc); box.appendChild(row); }
+  }
+
+  el("refresh").addEventListener("click",loadAll);
+  el("autoChk").addEventListener("change",e=>{ if(timer){clearInterval(timer);timer=null;} if(e.target.checked)timer=setInterval(loadAll,30000); });
+  loadAll();
+})();
+</script>

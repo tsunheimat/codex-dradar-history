@@ -1,0 +1,240 @@
+<title>历史事件 · dradar2 archive</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<style>
+:root{
+  --bg:#04070a; --panel:#0a100a; --panel-2:#0c140d; --text:#c9e8d2; --dim:#9fc4ad;
+  --muted:#5d8a68; --accent:#00e5ff; --good:#39ff14; --bad:#ff5b5b; --warn:#ffb000;
+  --line:#16261b; --line-2:#1d3324; --ink:#e8fff4;
+  --mono:"SFMono-Regular",Menlo,Consolas,"Liberation Mono","DejaVu Sans Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:14px;line-height:1.45;
+  background-image:radial-gradient(1200px 600px at 80% -10%, rgba(0,229,255,.05), transparent 60%),
+    repeating-linear-gradient(to bottom, rgba(0,0,0,.16) 0 2px, transparent 2px 4px);min-height:100vh}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1260px;margin:0 auto;padding:14px clamp(10px,3vw,26px) 60px}
+header.top{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:flex-end;border-bottom:1px solid var(--line-2);padding-bottom:12px;margin-bottom:16px}
+.brand{display:flex;flex-direction:column;gap:1px}
+.brand .zh{font-size:20px;font-weight:700;color:var(--ink);letter-spacing:.5px}
+.brand .zh .dot{color:var(--accent)}
+.brand .en{font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+nav.links{display:flex;flex-wrap:wrap;gap:4px 6px;margin-left:auto;align-items:center}
+nav.links a{padding:4px 9px;border:1px solid var(--line-2);border-radius:5px;font-size:12px;color:var(--dim);background:rgba(10,20,13,.5);white-space:nowrap}
+nav.links a:hover{border-color:var(--accent);color:var(--ink);text-decoration:none}
+nav.links a.active{border-color:var(--accent);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(0,229,255,.25)}
+nav.links a.ext{color:var(--muted);border-style:dashed}
+.tagline{width:100%;color:var(--muted);font-size:12px;margin-top:2px}
+.tagline b{color:var(--good);font-weight:600}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px 12px;
+  padding:12px;background:var(--panel);border:1px solid var(--line-2);border-radius:8px;margin-bottom:14px}
+.f{display:flex;flex-direction:column;gap:3px}
+.f label{font-size:11px;color:var(--muted);letter-spacing:.5px}
+.f input,.f select{background:var(--panel-2);border:1px solid var(--line-2);border-radius:5px;color:var(--text);
+  font-family:inherit;font-size:12.5px;padding:5px 7px;width:100%}
+.f input:focus,.f select:focus{outline:none;border-color:var(--accent)}
+.f.actions{grid-column:1/-1;flex-direction:row;flex-wrap:wrap;gap:8px;align-items:center}
+button.btn{background:rgba(0,229,255,.1);border:1px solid var(--accent);color:var(--accent);
+  font-family:inherit;font-size:12.5px;padding:6px 14px;border-radius:5px;cursor:pointer}
+button.btn:hover{background:rgba(0,229,255,.18)}
+button.btn.ghost{background:transparent;border-color:var(--line-2);color:var(--dim)}
+button.btn.ghost:hover{border-color:var(--muted);color:var(--ink)}
+button.btn:disabled{opacity:.4;cursor:not-allowed}
+.summary{color:var(--muted);font-size:12px;margin-left:auto}
+.summary b{color:var(--ink)}
+.tablewrap{border:1px solid var(--line-2);border-radius:8px;overflow-x:auto;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:820px;font-size:12.5px}
+thead th{position:sticky;top:0;background:#0b140d;color:var(--dim);text-align:left;font-weight:600;
+  padding:8px 10px;border-bottom:1px solid var(--line-2);white-space:nowrap;letter-spacing:.3px}
+thead th .en{color:var(--muted);font-weight:400;font-size:10px;display:block}
+tbody td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr:hover{background:rgba(0,229,255,.04)}
+td.time{color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+td.task{color:var(--text);max-width:280px;word-break:break-word}
+td.model{color:var(--accent)}
+td.eff{color:var(--dim)}
+td.nick{color:var(--text);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.badge{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid}
+.badge.pass{color:var(--good);border-color:rgba(57,255,20,.4);background:rgba(57,255,20,.08)}
+.badge.fail{color:var(--bad);border-color:rgba(255,91,91,.4);background:rgba(255,91,91,.08)}
+.badge.unk{color:var(--muted);border-color:var(--line-2)}
+.est{color:var(--warn);font-size:10px}
+.pager{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.pager .pg{color:var(--muted);font-size:12px}
+.empty{padding:34px 12px;text-align:center;color:var(--muted)}
+.empty .big{color:var(--dim);font-size:14px;margin-bottom:6px}
+.empty code{color:var(--accent);background:var(--panel-2);padding:2px 6px;border-radius:4px}
+.err{color:var(--bad);padding:8px 0;font-size:12px}
+footer{color:var(--muted);font-size:11px;text-align:center;margin-top:26px;border-top:1px solid var(--line);padding-top:14px}
+footer a{color:var(--dim)}
+.loading{opacity:.55;transition:opacity .2s}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="zh">历史事件<span class="dot">·</span>雷达</div>
+      <div class="en">dradar2 · graded events archive</div>
+    </div>
+    <nav class="links" id="nav"></nav>
+    <div class="tagline">上游 deng 仅保留 <b style="color:var(--warn)">最近 20 条</b> 评测事件 · 本存档 <b>永久保留全部</b>
+      <span style="color:var(--muted)">— upstream keeps only the last 20 events; we keep them all.</span></div>
+  </header>
+
+  <div class="filters">
+    <div class="f"><label>模型 Model</label><input id="fModel" list="dlModel" placeholder="全部 all"></div>
+    <div class="f"><label>强度 Effort</label><input id="fEffort" list="dlEffort" placeholder="全部 all"></div>
+    <div class="f"><label>任务 Task ID</label><input id="fTask" placeholder="任务前缀 substring"></div>
+    <div class="f"><label>昵称 Nickname</label><input id="fNick" placeholder="全部 all"></div>
+    <div class="f"><label>结果 Result</label><select id="fPassed"><option value="">全部 all</option><option value="1">通过 pass</option><option value="0">失败 fail</option></select></div>
+    <div class="f"><label>搜索 Search (task/nick)</label><input id="fQ" placeholder="自由文本 free text"></div>
+    <div class="f"><label>起 From (UTC+8)</label><input id="fFrom" type="date"></div>
+    <div class="f"><label>止 To (UTC+8)</label><input id="fTo" type="date"></div>
+    <div class="f"><label>每页 Per page</label><select id="fLimit"><option>25</option><option selected>50</option><option>100</option><option>200</option></select></div>
+    <div class="f actions">
+      <button class="btn" id="apply">查询 Apply</button>
+      <button class="btn ghost" id="reset">重置 Reset</button>
+      <span class="summary" id="summary"></span>
+    </div>
+  </div>
+  <datalist id="dlModel"><option>gpt-5.6-sol</option><option>gpt-5.6-terra</option><option>gpt-5.6-luna</option></datalist>
+  <datalist id="dlEffort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option><option>ultra</option></datalist>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th>时间<span class="en">time · UTC+8</span></th>
+        <th>任务<span class="en">task</span></th>
+        <th>模型<span class="en">model</span></th>
+        <th>强度<span class="en">effort</span></th>
+        <th>贡献者<span class="en">nickname</span></th>
+        <th>结果<span class="en">result</span></th>
+        <th class="num">成本<span class="en">cost usd</span></th>
+        <th class="num">分数<span class="en">points</span></th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="pager">
+    <button class="btn ghost" id="prev">⏮ 上一页 Prev</button>
+    <span class="pg" id="pg"></span>
+    <button class="btn ghost" id="next">下一页 Next ⏭</button>
+  </div>
+
+  <footer>
+    数据来自 <a href="https://codexradar.com" target="_blank" rel="noopener noreferrer">Codex 雷达 codexradar.com</a>
+    · dradar2 archive replica · 只读长期存档
+  </footer>
+</div>
+
+<script>
+"use strict";
+(function(){
+  const TZ="Asia/Shanghai"; const API="/archive-api";
+  const NAV=[["主站 Codex","/"],["分布式 Deng","/deng/"],["长期历史 History","/history"],["事件 Events","/history/events",true],["单元 Cells","/history/cells"],["采集状态 Sources","/sources"]];
+  (function(){ const nav=document.getElementById("nav");
+    for(const [label,href,active] of NAV){ const a=document.createElement("a"); a.href=href; a.textContent=label; if(active)a.className="active"; nav.appendChild(a); }
+    const e=document.createElement("a"); e.href="https://codexradar.com"; e.target="_blank"; e.rel="noopener noreferrer"; e.className="ext"; e.textContent="数据来自 Codex 雷达 ↗"; nav.appendChild(e); })();
+
+  const dtf=new Intl.DateTimeFormat("zh-CN",{timeZone:TZ,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+  function fmtTime(iso){ const t=Date.parse(iso); if(Number.isNaN(t))return iso||"–"; return dtf.format(t).replace(/\//g,"-"); }
+  // date input (YYYY-MM-DD in UTC+8) → ISO instant at UTC+8 boundary
+  function dayStartIso(d){ if(!d)return null; const t=Date.parse(d+"T00:00:00+08:00"); return Number.isNaN(t)?null:new Date(t).toISOString(); }
+  function dayEndIso(d){ if(!d)return null; const t=Date.parse(d+"T23:59:59.999+08:00"); return Number.isNaN(t)?null:new Date(t).toISOString(); }
+
+  async function getJSON(path){ const r=await fetch(path,{headers:{accept:"application/json"}}); if(!r.ok)throw new Error("HTTP "+r.status); return r.json(); }
+
+  const el=id=>document.getElementById(id);
+  let offset=0, total=0, limit=50, lastCount=0;
+
+  function readFilters(){
+    limit=parseInt(el("fLimit").value,10)||50;
+    const qs=new URLSearchParams();
+    const set=(k,v)=>{ if(v!=null && String(v).trim()!=="") qs.set(k,String(v).trim()); };
+    set("model",el("fModel").value);
+    set("effort",el("fEffort").value);
+    set("task",el("fTask").value);
+    set("nickname",el("fNick").value);
+    set("passed",el("fPassed").value);
+    set("q",el("fQ").value);
+    const from=dayStartIso(el("fFrom").value); if(from)qs.set("from",from);
+    const to=dayEndIso(el("fTo").value); if(to)qs.set("to",to);
+    qs.set("limit",String(limit));
+    qs.set("offset",String(offset));
+    return qs;
+  }
+
+  function g(o,camel,snake){ return o[camel]!=null?o[camel]:o[snake]; }
+  function costCell(td,r){
+    const usd=g(r,"costUsd","cost_usd"); const est=g(r,"costIsEstimate","cost_is_estimate");
+    if(usd==null){ td.textContent="–"; td.style.color="var(--muted)"; return; }
+    td.textContent="$"+Number(usd).toFixed(2);
+    if(est){ const s=document.createElement("span"); s.className="est"; s.textContent=" ~est"; td.appendChild(s); }
+  }
+
+  async function load(){
+    const wrap=document.querySelector(".tablewrap"); wrap.classList.add("loading");
+    try{
+      const qs=readFilters();
+      const data=await getJSON(API+"/events?"+qs.toString());
+      total=data&&typeof data.total==="number"?data.total:(data&&data.rows?data.rows.length:0);
+      const rows=(data&&data.rows)||[];
+      lastCount=rows.length;
+      renderRows(rows);
+      el("summary").innerHTML="共 <b>"+total.toLocaleString("en-US")+"</b> 条事件 total";
+      updatePager();
+    }catch(e){
+      el("tbody").innerHTML="";
+      const tr=document.createElement("tr"); const td=document.createElement("td"); td.colSpan=8; td.className="err";
+      td.textContent="加载失败 load failed: "+e.message; tr.appendChild(td); el("tbody").appendChild(tr);
+    }finally{ wrap.classList.remove("loading"); }
+  }
+
+  function renderRows(rows){
+    const tb=el("tbody"); tb.innerHTML="";
+    if(!rows.length){
+      const tr=document.createElement("tr"); const td=document.createElement("td"); td.colSpan=8;
+      td.innerHTML='<div class="empty"><div class="big">暂无匹配事件 No matching events</div>'+
+        '若存档为空，请先运行采集器 If the archive is empty, run the collector: <code>node src/collector.js</code></div>';
+      tr.appendChild(td); tb.appendChild(tr); return;
+    }
+    for(const r of rows){
+      const tr=document.createElement("tr");
+      const ct=(cls,text)=>{ const td=document.createElement("td"); td.className=cls; if(text!=null)td.textContent=text; return td; };
+      tr.appendChild(ct("time",fmtTime(g(r,"gradedAt","graded_at"))));
+      tr.appendChild(ct("task",g(r,"taskId","task_id")||"–"));
+      tr.appendChild(ct("model",r.model||"–"));
+      tr.appendChild(ct("eff",r.effort||"–"));
+      tr.appendChild(ct("nick",r.nickname||"—"));
+      const pv=r.passed; const bt=ct("");
+      const b=document.createElement("span");
+      if(pv===1||pv===true){ b.className="badge pass"; b.textContent="通过 PASS"; }
+      else if(pv===0||pv===false){ b.className="badge fail"; b.textContent="失败 FAIL"; }
+      else{ b.className="badge unk"; b.textContent="? "; }
+      bt.appendChild(b); tr.appendChild(bt);
+      const cc=ct("num"); costCell(cc,r); tr.appendChild(cc);
+      const pts=r.points; const pc=ct("num",pts==null?"–":Number(pts).toFixed(1)); if(pts!=null)pc.style.color="var(--good)"; tr.appendChild(pc);
+      tb.appendChild(tr);
+    }
+  }
+
+  function updatePager(){
+    const from=total===0?0:offset+1, to=offset+lastCount;
+    el("pg").textContent = total===0 ? "0 / 0" : (from+"–"+to+" / "+total.toLocaleString("en-US"));
+    el("prev").disabled = offset<=0;
+    el("next").disabled = offset+lastCount>=total;
+  }
+
+  el("apply").addEventListener("click",()=>{ offset=0; load(); });
+  el("reset").addEventListener("click",()=>{ ["fModel","fEffort","fTask","fNick","fQ","fFrom","fTo"].forEach(id=>el(id).value=""); el("fPassed").value=""; el("fLimit").value="50"; offset=0; load(); });
+  el("prev").addEventListener("click",()=>{ offset=Math.max(0,offset-limit); load(); });
+  el("next").addEventListener("click",()=>{ offset=offset+limit; load(); });
+  el("fLimit").addEventListener("change",()=>{ offset=0; load(); });
+  document.querySelectorAll(".filters input").forEach(inp=>inp.addEventListener("keydown",e=>{ if(e.key==="Enter"){ offset=0; load(); } }));
+
+  load();
+})();
+</script>

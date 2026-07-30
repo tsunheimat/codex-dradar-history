@@ -1,0 +1,39 @@
+# dradar2 — two processes sharing one SQLite file (WAL) on the ./data volume.
+#   web       : read-only replay + long-term history UI (port 3210)
+#   collector : polls the public upstream GET endpoints and archives every observation
+#
+# Start:   docker compose up -d --build
+# Seed:    docker compose run --rm web node scripts/seed-fixtures.js   (optional offline demo data)
+
+services:
+  web:
+    build: .
+    image: dradar2:latest
+    command: node src/server.js
+    ports:
+      - "3210:3210"
+    environment:
+      DATA_DIR: /data
+      PORT: "3210"
+      BIND: "0.0.0.0"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3210/archive-api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  collector:
+    # Reuses the image built by `web`; depends_on guarantees the build happens first.
+    image: dradar2:latest
+    command: node src/collector.js
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    depends_on:
+      - web

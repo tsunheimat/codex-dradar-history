@@ -12,6 +12,6 @@
     "collect": "node src/collector.js",
     "collect:once": "node src/collector.js --once",
     "seed:fixtures": "node scripts/seed-fixtures.js",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.js"
   }
 }
