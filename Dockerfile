@@ -3,8 +3,10 @@ FROM node:24-alpine
 
 WORKDIR /app
 
-# Zero runtime npm dependencies: package.json is copied only for metadata + npm scripts.
-COPY package.json ./
+# Install the native image codec before copying application sources so dependency layers cache.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
 COPY schema.sql ./
 COPY src/ ./src/
 COPY scripts/ ./scripts/

@@ -158,6 +158,19 @@ docker compose run --rm web node scripts/seed-fixtures.js
 
 The SQLite database (`archive.sqlite` + WAL files) persists in `./data` on the host.
 
+### Container image
+
+GitHub Actions tests the application and smoke-tests the container on pull requests. Pushes to
+`master` and `v*` tags publish multi-platform images for `linux/amd64` and `linux/arm64` to:
+
+```text
+ghcr.io/tsunheimat/codex-dradar-history:latest
+```
+
+Default-branch builds also receive `master` and `sha-<commit>` tags. Version tags are preserved
+as image tags. The GitHub package must be made public once in the package settings if anonymous
+pulls are required.
+
 ### Production without Docker (systemd)
 
 On a host without Docker, use the user units in `deploy/`:
