@@ -83,6 +83,16 @@ nav.links a.ext{color:var(--muted);border-style:dashed}
 .chip[aria-pressed="false"] .sw{opacity:.28;box-shadow:none}
 .selnote{font-size:11px;color:var(--muted)}
 .selnote.warn{color:var(--warn)}
+/* model switcher for the reasoning-tier chart */
+.model-switcher{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 10px}
+.model-switcher .lbl{color:var(--muted);font-size:12px}
+.model-tabs{display:flex;flex-wrap:wrap;gap:4px}
+.model-tab{padding:5px 10px;border:1px solid var(--line-2);border-radius:5px;
+  background:var(--panel-2);color:var(--dim);font-family:inherit;font-size:12px;cursor:pointer}
+.model-tab:hover{border-color:var(--accent);color:var(--ink)}
+.model-tab[aria-selected="true"]{background:rgba(0,229,255,.12);border-color:var(--accent);color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(0,229,255,.2)}
+.model-switcher .selnote{margin-left:auto}
 /* chart */
 .chart{position:relative}
 .chart .plot{position:relative;width:100%;overflow-x:auto}
@@ -137,9 +147,9 @@ footer a{color:var(--dim)}
     <h2>模型 IQ 走势 <span class="en">Model IQ over time</span></h2>
     <p class="retention">上游 deng 仅保留 <b>7 天</b>逐时 IQ 点 · 本存档 <span class="ours">保留全部历史</span>
       <span style="color:var(--muted)">— upstream keeps 7 days of hourly IQ; we keep all.</span></p>
-    <div class="selector">
-      <input class="search" id="iqSearch" placeholder="筛选系列 filter series…" aria-label="filter iq series">
-      <div class="chips" id="iqChips"></div>
+    <div class="model-switcher" aria-label="选择模型 select model">
+      <span class="lbl">模型 Model</span>
+      <div class="model-tabs" id="iqModels" role="tablist" aria-label="IQ model"></div>
       <span class="selnote" id="iqNote"></span>
     </div>
     <div class="chart" id="iqChart"></div>
@@ -150,9 +160,9 @@ footer a{color:var(--dim)}
     <h2>模型评分日均 <span class="en">Model ratings · daily average</span></h2>
     <p class="retention">上游 model-ratings 仅滚动 <b>14 天</b> · 本存档 <span class="ours">保留全部日均</span>
       <span style="color:var(--muted)">— upstream serves a rolling 14-day history; we keep every day.</span></p>
-    <div class="selector">
-      <input class="search" id="rtSearch" placeholder="筛选模型 filter models…" aria-label="filter rating models">
-      <div class="chips" id="rtChips"></div>
+    <div class="model-switcher" aria-label="选择评分模型 select rating model">
+      <span class="lbl">模型 Model</span>
+      <div class="model-tabs" id="rtModels" role="tablist" aria-label="rating model"></div>
       <span class="selnote" id="rtNote"></span>
     </div>
     <div class="chart" id="rtChart"></div>
@@ -190,6 +200,12 @@ footer a{color:var(--dim)}
   const TZ = "Asia/Shanghai";
   const API = "/archive-api";
   const PALETTE = ["#3987e5","#008300","#d55181","#c98500","#199e70","#d95926","#9085e9","#e66767"];
+  // Reasoning colors stay stable while the model switcher changes the data.
+  const EFFORT_ORDER = ["low","medium","high","xhigh","max","ultra"];
+  const EFFORT_COLORS = {
+    low: "#4f9cff", medium: "#39d98a", high: "#f4c95d",
+    xhigh: "#ff8a5b", max: "#e96b9b", ultra: "#b18cff"
+  };
   function colorFor(i){ return PALETTE[i % PALETTE.length]; }
   function dashFor(i){ return i >= 16 ? "2 3" : (i >= 8 ? "6 4" : null); }
 
@@ -420,46 +436,56 @@ footer a{color:var(--dim)}
 
   // ---- Panel 1: IQ ----
   const iqChart = makeChart(document.getElementById("iqChart"), {height:320, yFormat:v=>fmtNum(v,0), tipFormat:(v,p)=>fmtNum(v,1)+(p&&p.n!=null?"  n="+fmtInt(p.n):"")});
-  let iqAll=[]; let iqColors=new Map(); let iqSel=new Set(); let iqFilter="";
+  let iqAll=[]; let iqModels=[]; let iqByModel=new Map(); let iqModel="";
   const iqDefaults=["gpt-5.6-sol","gpt-5.6-terra","gpt-5.6-luna"];
-  function iqSortKey(a){ // aggregates (no '@') first, then by name
-    const agg=a.series.includes("@")?1:0; return agg+"|"+a.series;
+  function parseIqSeries(name){
+    const sourceLatest=name.startsWith("latest:");
+    const canonical=sourceLatest?name.slice(7):name;
+    const at=canonical.indexOf("@");
+    return {name, model:at<0?canonical:canonical.slice(0,at), effort:at<0?null:canonical.slice(at+1), sourceLatest};
   }
   async function initIq(){
     try{
       const list = await getJSON(API+"/iq-series");
-      iqAll = (Array.isArray(list)?list:[]).slice().sort((a,b)=> iqSortKey(a)<iqSortKey(b)?-1:1);
-      iqColors = assignColors(iqAll.map(s=>s.series));
-      const present=new Set(iqAll.map(s=>s.series));
-      iqSel = new Set(iqDefaults.filter(n=>present.has(n)));
-      if(iqSel.size===0) iqAll.slice(0,3).forEach(s=>iqSel.add(s.series));
-      renderIqChips();
-      document.getElementById("iqSearch").addEventListener("input",e=>{ iqFilter=e.target.value.toLowerCase(); renderIqChips(); });
+      iqAll = (Array.isArray(list)?list:[]).slice().sort((a,b)=>a.series.localeCompare(b.series));
+      iqByModel=new Map();
+      for(const item of iqAll){
+        const p=parseIqSeries(item.series);
+        if(!iqByModel.has(p.model))iqByModel.set(p.model,{efforts:new Map(),aggregate:null});
+        const group=iqByModel.get(p.model);
+        if(p.effort){
+          const prev=group.efforts.get(p.effort);
+          if(!prev || (prev.sourceLatest && !p.sourceLatest)) group.efforts.set(p.effort,{...item,...p});
+        }else if(!group.aggregate || (group.aggregate.sourceLatest && !p.sourceLatest)) group.aggregate={...item,...p};
+      }
+      iqModels=[...iqByModel.keys()].sort((a,b)=>a.localeCompare(b));
+      iqModel=iqDefaults.find(n=>iqByModel.has(n))||iqModels[0]||"";
+      renderIqModels();
       await loadIq();
     }catch(e){ iqChart.setData([]); document.getElementById("iqNote").textContent="加载失败 "+e.message; }
   }
-  function renderIqChips(){
-    const box=document.getElementById("iqChips"); box.innerHTML="";
-    const items = iqAll.filter(s=>!iqFilter || s.series.toLowerCase().includes(iqFilter));
-    for(const s of items){
-      const c=iqColors.get(s.series);
-      const chip=document.createElement("button"); chip.type="button"; chip.className="chip";
-      chip.style.color=c.color; chip.setAttribute("aria-pressed",String(iqSel.has(s.series)));
-      const sw=document.createElement("span"); sw.className="sw";
-      const nm=document.createElement("span"); nm.style.color="inherit"; nm.textContent=s.series;
-      chip.appendChild(sw); chip.appendChild(nm);
-      chip.addEventListener("click",()=>{
-        if(iqSel.has(s.series)) iqSel.delete(s.series);
-        else{ if(iqSel.size>=12){ flashNote("iqNote","最多选择 12 个系列 max 12 series",true); return; } iqSel.add(s.series); }
-        chip.setAttribute("aria-pressed",String(iqSel.has(s.series)));
-        loadIq();
-      });
-      box.appendChild(chip);
+  function renderIqModels(){
+    const box=document.getElementById("iqModels"); box.innerHTML="";
+    for(const model of iqModels){
+      const b=document.createElement("button"); b.type="button"; b.className="model-tab";
+      b.setAttribute("role","tab"); b.setAttribute("aria-selected",String(model===iqModel)); b.textContent=model;
+      b.addEventListener("click",()=>{ iqModel=model; renderIqModels(); loadIq(); });
+      box.appendChild(b);
     }
-    document.getElementById("iqNote").textContent = iqSel.size+" 个系列已选 selected · 共 "+iqAll.length+" 个可选";
+    const group=iqByModel.get(iqModel);
+    const count=group?group.efforts.size:0;
+    document.getElementById("iqNote").textContent = iqModel ? `${count} 个推理档位 reasoning tiers` : "暂无模型 no model";
   }
   async function loadIq(){
-    const sel=[...iqSel]; if(!sel.length){ iqChart.setData([]); return; }
+    const group=iqByModel.get(iqModel);
+    if(!group){ iqChart.setData([]); return; }
+    const selected=[...group.efforts.values()].sort((a,b)=>{
+      const ai=EFFORT_ORDER.indexOf(a.effort), bi=EFFORT_ORDER.indexOf(b.effort);
+      return (ai<0?99:ai)-(bi<0?99:bi);
+    });
+    const sel=selected.map(s=>s.name);
+    if(!sel.length && group.aggregate) sel.push(group.aggregate.name);
+    if(!sel.length){ iqChart.setData([]); return; }
     iqChart.setLoading(true);
     try{
       const r=rangeIso();
@@ -468,9 +494,14 @@ footer a{color:var(--dim)}
       const data=await getJSON(API+"/iq?"+qs.toString());
       const sm=(data&&data.series)||{};
       const out=[];
-      for(const name of sel){
-        const rows=sm[name]||[]; const c=iqColors.get(name)||{color:colorFor(0)};
-        out.push({key:name,name,color:c.color,dash:c.dash,
+      for(const item of selected){
+        const name=item.name; const rows=sm[name]||[];
+        out.push({key:name,name:item.effort+" reasoning",color:EFFORT_COLORS[item.effort]||PALETTE[0],
+          points:rows.map(p=>({t:toMs(p.ts),v:p.score,n:p.n})).filter(p=>p.t!=null)});
+      }
+      if(!out.length && group.aggregate){
+        const rows=sm[group.aggregate.name]||[];
+        out.push({key:group.aggregate.name,name:"overall",color:"#9fc4ad",dash:"5 4",
           points:rows.map(p=>({t:toMs(p.ts),v:p.score,n:p.n})).filter(p=>p.t!=null)});
       }
       iqChart.setData(out);
@@ -480,7 +511,12 @@ footer a{color:var(--dim)}
 
   // ---- Panel 2: ratings ----
   const rtChart = makeChart(document.getElementById("rtChart"), {height:300, yFormat:v=>fmtNum(v,0), tipFormat:v=>fmtNum(v,2)});
-  let rtRows=[]; let rtModels=[]; let rtColors=new Map(); let rtSel=new Set(); let rtFilter="";
+  let rtRows=[]; let rtModels=[]; let rtByModel=new Map(); let rtModel="";
+  const rtDefaults=["GPT-5.6 Sol","GPT-5.6 Terra","GPT-5.6 Luna"];
+  function ratingEffort(id){
+    for(const effort of EFFORT_ORDER) if(id.endsWith("-"+effort)) return effort;
+    return null;
+  }
   async function loadRatings(){
     rtChart.setLoading(true);
     try{
@@ -488,48 +524,49 @@ footer a{color:var(--dim)}
       if(r.fromDay)qs.set("from",r.fromDay);
       rtRows = await getJSON(API+"/ratings"+(qs.toString()?"?"+qs.toString():""));
       if(!Array.isArray(rtRows))rtRows=[];
-      // distinct models (stable order by group then id)
-      const seen=new Map();
-      for(const row of rtRows){ const id=row.modelId||row.model_id; if(id&&!seen.has(id)) seen.set(id,{id,label:row.label||id,grp:row.grp||row.group||""}); }
-      rtModels=[...seen.values()].sort((a,b)=> (a.grp+a.id)<(b.grp+b.id)?-1:1);
-      rtColors=assignColors(rtModels.map(m=>m.id));
-      if(rtSel.size===0){ // default: the 'max' variant per group (representative), else first few
-        const defs=rtModels.filter(m=>/-max$/.test(m.id)); (defs.length?defs:rtModels.slice(0,3)).forEach(m=>rtSel.add(m.id));
+      rtByModel=new Map();
+      for(const row of rtRows){
+        const id=row.modelId||row.model_id; if(!id)continue;
+        const effort=ratingEffort(id); const base=effort?id.slice(0,-effort.length-1):id;
+        const model=row.grp||row.group||base;
+        if(!rtByModel.has(model))rtByModel.set(model,{label:model,efforts:new Map()});
+        const group=rtByModel.get(model);
+        if(effort && !group.efforts.has(effort)) group.efforts.set(effort,id);
       }
-      renderRtChips();
+      rtModels=[...rtByModel.keys()].sort((a,b)=>a.localeCompare(b));
+      if(!rtModel || !rtByModel.has(rtModel)) rtModel=rtDefaults.find(n=>rtByModel.has(n))||rtModels[0]||"";
+      renderRtModels();
       drawRatings();
     }catch(e){ rtChart.setData([]); document.getElementById("rtNote").textContent="加载失败 "+e.message; }
     finally{ rtChart.setLoading(false); }
   }
-  function renderRtChips(){
-    const box=document.getElementById("rtChips"); box.innerHTML="";
-    const items=rtModels.filter(m=>!rtFilter || (m.id+m.label).toLowerCase().includes(rtFilter));
-    for(const m of items){
-      const c=rtColors.get(m.id);
-      const chip=document.createElement("button"); chip.type="button"; chip.className="chip";
-      chip.style.color=c.color; chip.setAttribute("aria-pressed",String(rtSel.has(m.id)));
-      const sw=document.createElement("span"); sw.className="sw";
-      const nm=document.createElement("span"); nm.style.color="inherit"; nm.textContent=m.label;
-      chip.appendChild(sw); chip.appendChild(nm);
-      chip.addEventListener("click",()=>{
-        if(rtSel.has(m.id))rtSel.delete(m.id);
-        else{ if(rtSel.size>=12){ flashNote("rtNote","最多 12 个 max 12",true); return; } rtSel.add(m.id); }
-        chip.setAttribute("aria-pressed",String(rtSel.has(m.id))); drawRatings();
-      });
-      box.appendChild(chip);
+  function renderRtModels(){
+    const box=document.getElementById("rtModels"); box.innerHTML="";
+    for(const model of rtModels){
+      const b=document.createElement("button"); b.type="button"; b.className="model-tab";
+      b.setAttribute("role","tab"); b.setAttribute("aria-selected",String(model===rtModel)); b.textContent=model;
+      b.addEventListener("click",()=>{ rtModel=model; renderRtModels(); drawRatings(); });
+      box.appendChild(b);
     }
-    document.getElementById("rtNote").textContent=rtSel.size+" 个模型已选 selected · 共 "+rtModels.length;
+    const group=rtByModel.get(rtModel);
+    const count=group?group.efforts.size:0;
+    document.getElementById("rtNote").textContent=rtModel ? `${count} 个推理档位 reasoning tiers` : "暂无模型 no model";
   }
   function drawRatings(){
-    const byModel=new Map();
-    for(const row of rtRows){ const id=row.modelId||row.model_id; if(!rtSel.has(id))continue;
-      if(!byModel.has(id))byModel.set(id,[]);
+    const group=rtByModel.get(rtModel);
+    if(!group){ rtChart.setData([]); return; }
+    const byEffort=new Map();
+    for(const row of rtRows){ const id=row.modelId||row.model_id;
+      const effort=ratingEffort(id); if(!effort || group.efforts.get(effort)!==id)continue;
+      if(!byEffort.has(effort))byEffort.set(effort,[]);
       const day=row.day; const t=toMs(day+"T12:00:00+08:00"); // plot at midday Shanghai
-      if(t!=null && row.average!=null) byModel.get(id).push({t,v:Number(row.average),n:row.count});
+      if(t!=null && row.average!=null) byEffort.get(effort).push({t,v:Number(row.average),n:row.count});
     }
     const out=[];
-    for(const m of rtModels){ if(!rtSel.has(m.id))continue; const c=rtColors.get(m.id);
-      out.push({key:m.id,name:m.label,color:c.color,dash:c.dash,points:(byModel.get(m.id)||[]).sort((a,b)=>a.t-b.t)}); }
+    for(const effort of EFFORT_ORDER){ if(!group.efforts.has(effort))continue;
+      out.push({key:rtModel+"@"+effort,name:effort+" reasoning",color:EFFORT_COLORS[effort],
+        points:(byEffort.get(effort)||[]).sort((a,b)=>a.t-b.t)});
+    }
     rtChart.setData(out);
   }
 
@@ -566,12 +603,9 @@ footer a{color:var(--dim)}
   }
 
   function flashNote(id,msg,warn){ const el=document.getElementById(id); el.textContent=msg; el.classList.toggle("warn",!!warn);
-    clearTimeout(el._t); el._t=setTimeout(()=>{ el.classList.remove("warn"); if(id==="iqNote")renderIqChips(); else if(id==="rtNote")renderRtChips(); },2200); }
+    clearTimeout(el._t); el._t=setTimeout(()=>{ el.classList.remove("warn"); if(id==="iqNote")renderIqModels(); else if(id==="rtNote")renderRtModels(); },2200); }
 
   function reloadAll(){ loadIq(); loadRatings(); loadSubs(); loadDeng(); }
-
-  // rating search wiring
-  document.getElementById("rtSearch").addEventListener("input",e=>{ rtFilter=e.target.value.toLowerCase(); renderRtChips(); });
 
   updateStatus();
   initIq();

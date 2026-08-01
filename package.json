@@ -12,6 +12,10 @@
     "collect": "node src/collector.js",
     "collect:once": "node src/collector.js --once",
     "seed:fixtures": "node scripts/seed-fixtures.js",
+    "compact": "node scripts/compact-archive.js",
     "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "sharp": "^0.35.3"
   }
 }

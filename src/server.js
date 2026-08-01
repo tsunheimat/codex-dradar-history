@@ -17,10 +17,10 @@ import {
   patchCodexHtml,
   patchDengHtml,
   patchIntroHtml,
-  patchReportJs,
 } from "./replay.js";
 import { registerArchiveApi } from "./api-routes.js";
 import { registerHistoryApi } from "./history-api.js";
+import { composeTiledPng } from "./image-tiles.js";
 
 const PUBLIC_DIR = fileURLToPath(new URL("./public/", import.meta.url));
 
@@ -155,7 +155,7 @@ function notFoundPage(pathname) {
 // Feed replay: resolve ?at=, load the capture body, patch pages.
 // ---------------------------------------------------------------------------
 
-function serveCapture(archive, feedId, ctx, { contentType, patch = null }) {
+async function serveCapture(archive, feedId, ctx, { contentType, patch = null }) {
   const at = resolveAt(ctx.query);
   const cap = archive.latestCapture(feedId, at);
   if (!cap) {
@@ -163,7 +163,10 @@ function serveCapture(archive, feedId, ctx, { contentType, patch = null }) {
     else ctx.sendJson(404, { error: "not archived" });
     return;
   }
-  let body = archive.captureBody(cap.hash);
+  const manifest = archive.imageManifest(cap.hash);
+  let body = manifest
+    ? await composeTiledPng(manifest, (tileHash) => archive.imageTileBody(tileHash))
+    : archive.captureBody(cap.hash);
   if (body == null) {
     if (patch) ctx.send(200, emptyPage(feedId), { "Content-Type": CT.HTML });
     else ctx.sendJson(404, { error: "not archived" });
@@ -264,7 +267,7 @@ function registerReplayRoutes(router, archive) {
   // --- deng.codexradar.com clone pages ---
   const dengPage = cap("deng:html", { contentType: CT.HTML, patch: patchDengHtml });
   // /deng (no trailing slash): redirect to /deng/ so the page's document-relative
-  // asset URLs (assets/i18n.js, assets/radar-report.js, …) resolve under the
+  // asset URLs (assets/i18n.js, …) resolve under the
   // /deng/ mount instead of 404ing at the site root. Preserve any query (?at=).
   router.add("GET", "/deng", (req, res, ctx) => {
     const qi = req.url.indexOf("?");
@@ -275,7 +278,6 @@ function registerReplayRoutes(router, archive) {
   router.add("GET", "/deng/en", dengPage); // upstream serves identical bytes for /en
   router.add("GET", "/deng/intro", cap("deng:intro", { contentType: CT.HTML, patch: patchIntroHtml }));
   router.add("GET", "/deng/assets/i18n.js", cap("deng:i18n", { contentType: CT.JS }));
-  router.add("GET", "/deng/assets/radar-report.js", cap("deng:report-js", { contentType: CT.JS, patch: (js) => patchReportJs(js) }));
 
   // --- swept asset mirror (exact routes above win over these prefixes) ---
   const assetRoute = (site, mount) => (req, res, ctx) => {
@@ -293,6 +295,18 @@ function registerReplayRoutes(router, archive) {
   router.add("GET", "/deng-api/api/v1/iq-history", cap("deng:iq-history", { contentType: CT.JSON }));
   router.add("GET", "/deng-api/api/v1/events", cap("deng:events", { contentType: CT.JSON }));
   router.add("GET", "/deng-api/api/v1/leaderboard", cap("deng:leaderboard", { contentType: CT.JSON }));
+  // The contributor ladder is no longer replayed. Keep only the aggregate
+  // values consumed by the upper model-IQ footer.
+  router.add("GET", "/deng-api/api/v1/summary", (req, res, ctx) => {
+    const row = archive.latestDengStats();
+    ctx.sendJson(200, row ? {
+      online_volunteers: row.onlineVolunteers,
+      total_tokens: row.totalTokens,
+      total_usd: row.totalUsd,
+      pedal_speed: { usd_per_hour: row.pedalUsdPerHour },
+      latest_burn: { tokens: row.burnTokens, usd: row.burnUsd },
+    } : {});
+  });
   // radar-insights is byte-identical to codex's — alias it.
   router.add("GET", "/deng-api/api/v1/radar-insights", cap("codex:radar-insights", { contentType: CT.JSON }));
   router.add("GET", "/deng-api/api/v1/whoami", (req, res, ctx) =>
@@ -393,7 +407,7 @@ const SERVED_FEEDS = [
   "codex:html", "codex:html-en", "codex:current", "codex:feed",
   "codex:model-ratings", "codex:radar-insights", "codex:intel-efficiency",
   "codex:intel-published", "codex:subscriber-count", "codex:logo",
-  "deng:html", "deng:intro", "deng:i18n", "deng:report-js",
+  "deng:html", "deng:intro", "deng:i18n",
   "deng:table", "deng:iq-history", "deng:events", "deng:leaderboard",
 ];
 

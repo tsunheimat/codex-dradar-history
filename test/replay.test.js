@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { resolveAt, patchCodexHtml, patchDengHtml, patchIntroHtml, patchReportJs } from '../src/replay.js';
+import { resolveAt, patchCodexHtml, patchDengHtml, patchIntroHtml } from '../src/replay.js';
 
 const FIX = path.join(import.meta.dirname, 'fixtures');
 const readFix = (name) => fs.readFileSync(path.join(FIX, name), 'utf8');
@@ -51,6 +51,23 @@ test('patchDengHtml: API base + localhost override + backlink + timebar injectio
   // Backlink to codexradar.com rewritten to the local root.
   assert.ok(!out.includes('href="https://codexradar.com"'), 'upstream backlink removed');
   assert.ok(out.includes('href="/"'), 'backlink rewritten to /');
+  assert.ok(out.includes('<a class="hero-link history-link" href="/history">长期历史</a>'),
+    'deng nav includes the local history tab beside DRadar source');
+
+  // The subscription-tier matrix is intentionally absent from the replay.
+  assert.ok(!out.includes('<span class="tq">我的 Codex 订阅类型</span>'),
+    'subscription-tier heading removed');
+  assert.ok(!out.includes('class="tablebox"'), 'visible benchmark matrix removed');
+  assert.ok(out.includes('id="matrix-tools" hidden'), 'inert compatibility controls remain hidden');
+  assert.ok(out.indexOf('id="matrix-tools" hidden') < out.indexOf('document.getElementById("copy-setup-prompt")'),
+    'compatibility controls appear before the inline page script initializes');
+  assert.ok(out.includes('id="copy-setup-prompt" hidden'), 'removed participation control has an inert target');
+  assert.ok(out.includes('if (document.getElementById("matrix-tools").hidden) return;'),
+    'table rendering exits after updating the summary widgets');
+  assert.ok(!out.includes('id="contributors"'), 'contributor ladder section removed');
+  assert.ok(!out.includes('class="hero-link ladder-link"'), 'ladder tab removed');
+  assert.ok(!out.includes('assets/radar-report.js'), 'report asset removed with ladder/matrix UI');
+  assert.ok(out.includes('/api/v1/summary'), 'upper IQ footer uses aggregate summary data');
 
   // Runtime backlink re-derivation neutralized: syncMainSiteLinks() must not be
   // able to reassign the anchors back to the live apex on load.
@@ -58,16 +75,6 @@ test('patchDengHtml: API base + localhost override + backlink + timebar injectio
   assert.ok(!out.includes('iqLink.href = "https://codexradar.com"'), 'runtime iq-link assignment removed');
   assert.ok(out.includes('el.href = "/";'), 'runtime backlink repointed to /');
   assert.ok(out.includes('if (iqLink) iqLink.href = "/";'), 'runtime iq-link repointed to /');
-});
-
-test('patchReportJs: apiRoot() rewritten to the local /deng-api mount', () => {
-  const js = readFix('radar-report.js');
-  const out = patchReportJs(js);
-  assert.ok(out.includes('location.origin + "/deng-api"'), 'apiRoot returns the local mount');
-  assert.ok(!out.includes('api.codexradar.com'), 'no upstream API host remains');
-  assert.ok(!out.includes('127.0.0.1:8399'), 'no dead dev-port remains');
-  // The report launcher fetch paths still resolve under the mount.
-  assert.ok(out.includes('/api/v1/table'), 'report still fetches the table endpoint');
 });
 
 test('patchDengHtml: warning injected when the API patch cannot match', () => {
@@ -92,6 +99,8 @@ test('patchCodexHtml: timebar injected + deng backlink rewritten', () => {
 
   assert.ok(!out.includes('href="https://deng.codexradar.com"'), 'deng backlink rewritten');
   assert.ok(out.includes('href="/deng/"'), 'deng backlink now points at local clone');
+  assert.ok(out.includes('<a class="site-announcement-history" href="/history">长期历史</a>'),
+    'root quick links include the local history tab beside distributed radar');
 });
 
 test('patchIntroHtml: timebar-only injection', () => {

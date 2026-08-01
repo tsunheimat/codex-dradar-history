@@ -50,7 +50,15 @@ do not edit it.
 - UI display timezone is `Asia/Shanghai` (what upstream uses), via `Intl.DateTimeFormat` with
   `timeZone: "Asia/Shanghai"`; label times `UTC+8`.
 - Hashes: `sha256` hex of the **raw uncompressed body bytes**.
-- Blobs stored gzip level 9 (`zlib.gzipSync(body, {level: 9})`).
+- Blob storage is two-tier. New blobs are stored gzip level 9 (`zlib.gzipSync(body, {level: 9})`).
+  A daily packer (`packBlobs`, run by the collector at startup and every 24 h) then moves each
+  feed's older text-like blobs into per-feed **brotli packs** (`blob_packs`, quality 9,
+  `lgwin=24`): consecutive versions of a feed differ by ~1 KB while sharing the whole page shell,
+  so a shared 16 MB window stores the history ~8× smaller than per-blob gzip. Packed blobs keep
+  their `hash`/`bytes` rows, gain `pack_id`/`pack_offset`, and their `body_gz` becomes
+  zero-length. The newest 2 versions per feed always stay individually gzipped; packs seal at
+  8 MB uncompressed and are never rewritten after that. Already-compressed content types
+  (image/*, fonts, media) are never packed. Every packed slice is sha256-verified before commit.
 
 ## 2. Database — see `schema.sql` (authoritative)
 
@@ -83,7 +91,11 @@ latestCapture(feed, atIso = null)
 // atIso null → newest capture row. Else newest row with first_at <= atIso.
 // If none (atIso earlier than first data) → the OLDEST row (so time-travel before history
 // begins still renders something; callers can compare firstAt > atIso to detect this).
-captureBody(hash)                    // → Buffer (gunzipped) | null
+captureBody(hash)                    // → Buffer | null (transparent across gzip blobs and
+                                     //   brotli packs; decompressed packs are LRU-cached)
+packBlobs({targetRawBytes = 8 MiB, keepLatest = 2} = {})
+// Move older text-like blobs into per-feed brotli packs (see §1). Idempotent.
+// → {feeds, blobs, packs, rawBytes, packedBytes}
 listVersions(feed, {fromIso = null, toIso = null, limit = 500, order = "desc"})
 // → [{firstAt, lastAt, hash, bytes, captureCount}]
 feedsSummary()
@@ -127,7 +139,8 @@ listDengTasks()                                       // → [{id, title, langua
 queryRatings({fromDay, toDay})                        // → [{day, modelId, label, grp, average, count}]
 querySubscribers({fromIso, toIso})                    // → [{ts, count}]
 queryDengStats({fromIso, toIso, maxPoints = 2000})    // → [{ts, ...}] downsampled like iq
-dbStats()                                             // → {dbBytes, blobBytes, blobCount, tables: {name: rowCount}}
+dbStats()   // → {dbBytes, blobBytes, blobCount, packBytes, packCount, tileBytes, tileCount,
+            //    tables: {name: rowCount}}
 close()
 ```
 
@@ -155,11 +168,10 @@ export function getFeed(id)
 | `deng:html` | `https://deng.codexradar.com/` | page | 600 | – | always |
 | `deng:intro` | `https://deng.codexradar.com/intro` | page | 21600 | – | always |
 | `deng:i18n` | `https://deng.codexradar.com/assets/i18n.js` | asset | 21600 | – | always |
-| `deng:report-js` | `https://deng.codexradar.com/assets/radar-report.js` | asset | 21600 | – | always |
-| `deng:table` | `https://api.codexradar.com/api/v1/table?ui=1` | json | 600 | `cells` | sampled |
+| `deng:table` | `https://api.codexradar.com/api/v1/table?ui=1` | json | 600 | – | sampled |
 | `deng:iq-history` | `https://api.codexradar.com/api/v1/iq-history` | json | 900 | `iq` | always |
 | `deng:events` | `https://api.codexradar.com/api/v1/events?n=20` | json | 300 | `events` | always |
-| `deng:leaderboard` | `https://api.codexradar.com/api/v1/leaderboard` | json | 900 | `dengstats` | sampled |
+| `deng:leaderboard` | `https://api.codexradar.com/api/v1/leaderboard` | json | 900 | `dengstats` | none |
 
 Notes:
 - `deng` radar-insights is byte-identical to `codex:radar-insights` (verified) — not collected;
@@ -171,19 +183,27 @@ Notes:
   per sweep, dedup via feed_state.etag = cache-buster query) under synthetic feeds
   `<site>:asset:<path>`, audited as `<site>:assets`. Served at `/assets/*` and `/deng/assets/*`
   (prefix routes; explicit asset routes win). Replay pages also strip the upstream Cloudflare RUM
-  beacon script so the clone makes no third-party requests (GitHub contributor avatars on the deng
-  leaderboard are the accepted exception — live third-party images, not codexradar data).
+  beacon script and removed ladder assets so the clone makes no third-party requests.
+- Comic assets matching `assets/radar-high-readout-comic-YYYYMMDD-HHMM.png` use the image tile
+  engine: decoded RGB/RGBA tiles are content-addressed in `image_tiles`, and each capture stores a
+  compact manifest in `image_manifests`/`image_manifest_tiles`. Tiles are stored as **quality-90
+  WebP** (smart subsampling) and composed back to PNG by replay — comics are one-shot generated
+  images (measured: no tile has ever been shared between two comics), so lossless storage bought
+  nothing at ~4× the bytes; comics are therefore visually faithful but not bit-exact. Tile hashes
+  are sha256 of the decoded SOURCE pixels, so dedup identity is unaffected by the lossy encoding.
+  The collector compares tile bytes with gzip-9 source bytes and keeps the original PNG when
+  tiling would be larger; decoder failures also fall back to raw. `scripts/compact-archive.js`
+  (`npm run compact`) migrates pre-existing lossless tiles, packs the blob backlog and VACUUMs.
 - `keepRaw: "always"`: call `saveCapture(..., {storeRaw: true})` every poll — content-hash dedup
   makes unchanged polls free.
 - `keepRaw: "sampled"`: these payloads embed live counters/timestamps so every poll differs.
   Store the raw body only when (a) the extractor reported changes this poll, OR (b) ≥ 3300 s since
   the last stored raw version (heartbeat), else `storeRaw: false`. Rule (a) is skipped for
   extractors that report churn on essentially every poll (the raw body would then be re-stored every
-  poll, defeating the sampling): `codex:intel-efficiency` has no extractor; the leaderboard's
-  `dengstats` always samples a row; and `deng:table`'s `cells` reports ≥ 1 changed cell on nearly
-  every poll under continuous grading (which would re-store the ~1.9 MB body every 10 min). For all
-  three, raw is anchored by the heartbeat (b) only — the per-cell deltas that make `cells` churn are
-  still archived compactly in `cell_history`.
+  poll, defeating the sampling): `codex:intel-efficiency` has no extractor. The leaderboard uses
+  `keepRaw: "none"`: only aggregate leaderboard totals are retained for the upper IQ footer.
+  `deng:table` and `codex:intel-efficiency` snapshots are reduced to the model-IQ and
+  efficiency fields; subscription matrix state and contributor identity data are discarded.
 - ~600 requests/day total. This is far below the load one open browser tab of the live site
   generates (the deng page itself polls every 15–60 s).
 
@@ -312,11 +332,10 @@ Query param `at` (ISO-8601 or epoch-ms) on ANY replay route selects the newest c
 | `GET /deng` | – | 301 redirect → `/deng/` (so the page's document-relative asset URLs resolve under the mount; preserves `?at=`) |
 | `GET /deng/intro` | `deng:intro` | patched page (timebar only) |
 | `GET /deng/assets/i18n.js` | `deng:i18n` | `text/javascript`, any `?v=` |
-| `GET /deng/assets/radar-report.js` | `deng:report-js` | `text/javascript`, any `?v=`; **patched** — `apiRoot()` rewritten to `location.origin + "/deng-api"` (else the report launcher would fetch live upstream / the dead dev port) |
-| `GET /deng-api/api/v1/table` | `deng:table` | |
+| `GET /deng-api/api/v1/table` | `deng:table` | reduced IQ/efficiency payload |
 | `GET /deng-api/api/v1/iq-history` | `deng:iq-history` | |
 | `GET /deng-api/api/v1/events` | `deng:events` | |
-| `GET /deng-api/api/v1/leaderboard` | `deng:leaderboard` | |
+| `GET /deng-api/api/v1/summary` | `deng_stats` | aggregate values used by the upper IQ footer |
 | `GET /deng-api/api/v1/radar-insights` | `codex:radar-insights` | alias (verified identical) |
 | `GET /deng-api/api/v1/avatar/<seed>.svg` | avatars table | fallback: neutral generated SVG circle, 200 |
 | `GET /deng-api/api/v1/whoami` | – | 401 `{detail:"archive replica"}` |
@@ -333,7 +352,6 @@ export function resolveAt(query)           // "at" → ISO string | null (accept
 export function patchCodexHtml(html, {feedId, capturedAt, at})
 export function patchDengHtml(html, {feedId, capturedAt, at})
 export function patchIntroHtml(html, {feedId, capturedAt, at})
-export function patchReportJs(js)          // rewrite radar-report.js apiRoot() → location.origin + "/deng-api"
 ```
 
 All pages: inject right after `<head>` (first occurrence, case-insensitive):
@@ -433,7 +451,7 @@ attribution to upstream.
 `intel-eff.json→codex:intel-efficiency`, `intel-published.json→codex:intel-published`,
 `subscriber-count.json→codex:subscriber-count`, `feed.xml→codex:feed`,
 `codex-logo.svg→codex:logo`, `deng-intro.html→deng:intro`, `i18n.js→deng:i18n`,
-`radar-report.js→deng:report-js`, `deng-table.json→deng:table`,
+`deng-table.json→deng:table`,
 `deng-iq-history.json→deng:iq-history`, `deng-events.json→deng:events`,
 `deng-leaderboard.json→deng:leaderboard`; runs matching extractors too.
 Prints a summary. Used for offline demo + Agent D's integration tests.
@@ -470,8 +488,8 @@ fetcher tests use a local `node:http` server on port 0.
   `wget -qO-`) and `collector` (`command: node src/collector.js`, `restart: unless-stopped`),
   both mounting volume `./data:/data`.
 - `README.md`: what/why (48 h → forever), quickstart (seed + dev), production compose, config
-  table, endpoint map (clone paths + archive APIs), storage-growth estimate (~20–60 MB/day worst
-  case, mostly the two HTML feeds + table), attribution & upstream-courtesy note (public GET
+  table, endpoint map (clone paths + archive APIs), storage-growth estimate (~5 MB/day typical
+  with blob packing + q90 comic tiles; comics dominate), attribution & upstream-courtesy note (public GET
   endpoints only, modest cadence, attribution shown, no auth-gated API use, how to lower cadence
   via `INTERVAL_SCALE`), LAN exposure warning (bind, no auth — keep on trusted LAN).
 

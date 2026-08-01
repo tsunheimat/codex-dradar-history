@@ -10,6 +10,41 @@ function sha256(buf) {
   return crypto.createHash("sha256").update(buf).digest("hex");
 }
 
+// ---- blob packing ----------------------------------------------------------
+// Consecutive versions of the text feeds differ by ~1 KB while each gzip-9 blob
+// costs 60-110 KB: gzip's 32 KB window cannot see the previous version. Packing
+// a feed's history into one brotli stream (lgwin=24 → 16 MB window) stores the
+// shared page shell once; measured on the live archive this is ~8x smaller.
+const PACK_TARGET_RAW_BYTES = 8 * 1024 * 1024; // seal a pack at ~8 MB uncompressed
+const PACK_KEEP_LATEST = 2;                    // newest versions stay individually gzipped
+const PACK_BROTLI_QUALITY = 9;
+const PACK_CACHE_MAX_BYTES = 48 * 1024 * 1024; // decompressed-pack LRU budget
+const EMPTY_BLOB = Buffer.alloc(0);
+
+function brotliPackOptions(sizeHint) {
+  return {
+    params: {
+      [zlib.constants.BROTLI_PARAM_QUALITY]: PACK_BROTLI_QUALITY,
+      [zlib.constants.BROTLI_PARAM_LGWIN]: 24,
+      [zlib.constants.BROTLI_PARAM_SIZE_HINT]: sizeHint,
+    },
+  };
+}
+
+// Only text-like bodies benefit from a shared window; already-compressed
+// formats (png/jpeg/webp/fonts/media) stay as individual gzip blobs.
+function isPackableContentType(ct) {
+  if (!ct) return false;
+  const t = String(ct).toLowerCase();
+  return (
+    t.startsWith("text/") ||
+    t.includes("json") ||
+    t.includes("xml") ||
+    t.includes("javascript") ||
+    t.includes("svg")
+  );
+}
+
 // Bind-safe coercion: node:sqlite accepts null/number/bigint/string/TypedArray.
 // booleans and undefined must be converted before binding.
 function b(v) {
@@ -40,6 +75,14 @@ function applySchema(db) {
   db.exec("PRAGMA synchronous=NORMAL;");
   const schema = fs.readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
   db.exec(schema);
+  // Existing archives need the summary columns without a destructive rebuild.
+  for (const column of ["total_tokens INTEGER", "total_usd REAL"]) {
+    try { db.exec(`ALTER TABLE deng_stats ADD COLUMN ${column}`); } catch { /* already present */ }
+  }
+  try { db.exec("ALTER TABLE image_manifests ADD COLUMN channels INTEGER NOT NULL DEFAULT 4"); } catch { /* already present */ }
+  for (const column of ["pack_id INTEGER REFERENCES blob_packs(id)", "pack_offset INTEGER"]) {
+    try { db.exec(`ALTER TABLE blobs ADD COLUMN ${column}`); } catch { /* already present */ }
+  }
 }
 
 export function openArchive(dataDir, { readonly = false } = {}) {
@@ -65,6 +108,12 @@ export class Archive {
   constructor(db) {
     this.db = db;
     this._stmts = new Map();
+    // A read-only connection to a pre-pack database cannot run the ALTERs, so
+    // probe for the pack columns and fall back to legacy SQL when absent.
+    this._hasPacks =
+      db.prepare("SELECT COUNT(*) AS c FROM pragma_table_info('blobs') WHERE name='pack_id'").get().c > 0;
+    this._packCache = new Map(); // pack_id → decompressed Buffer, insertion order = LRU
+    this._packCacheBytes = 0;
   }
 
   _p(sql) {
@@ -121,6 +170,110 @@ export class Archive {
     return { changed: true, hash, deduped: false };
   }
 
+  saveImageCapture({
+    feed,
+    capturedAt,
+    tiles,
+    rawBody = null,
+    httpStatus = 200,
+    upstreamTs = null,
+    contentType = "image/png",
+  }) {
+    if (!tiles || !Array.isArray(tiles.tiles) || !tiles.tiles.length) {
+      throw new Error("image capture requires at least one tile");
+    }
+    const manifestBody = Buffer.from(JSON.stringify({
+      format: "dradar-image-tiles-v1",
+      width: tiles.width,
+      height: tiles.height,
+      tileSize: tiles.tileSize,
+      channels: tiles.channels || 4,
+      tiles: tiles.tiles.map(({ hash, x, y, width, height }) => ({ hash, x, y, width, height })),
+    }), "utf8");
+    if (rawBody) {
+      const uniqueTileBytes = new Map();
+      for (const tile of tiles.tiles) uniqueTileBytes.set(tile.hash, tile.bytes);
+      const tiledBytes = zlib.gzipSync(manifestBody).length +
+        [...uniqueTileBytes.values()].reduce((sum, bytes) => sum + bytes, 0);
+      const rawBytes = zlib.gzipSync(rawBody, { level: 9 }).length;
+      if (tiledBytes >= rawBytes) {
+        return this.saveCapture({
+          feed,
+          capturedAt,
+          body: rawBody,
+          httpStatus,
+          upstreamTs,
+          contentType,
+        });
+      }
+    }
+    this.db.exec("BEGIN");
+    try {
+      const tileStmt = this._p(
+        "INSERT OR IGNORE INTO image_tiles (hash, bytes, body) VALUES (?,?,?)"
+      );
+      for (const tile of tiles.tiles) {
+        tileStmt.run(tile.hash, tile.bytes, tile.body);
+      }
+      const cap = this.saveCapture({
+        feed,
+        capturedAt,
+        body: manifestBody,
+        httpStatus,
+        upstreamTs,
+        contentType,
+      });
+      if (cap.changed && !cap.deduped) {
+        this._p(
+          `INSERT OR IGNORE INTO image_manifests
+             (capture_hash, width, height, tile_size, channels, content_type)
+           VALUES (?,?,?,?,?,?)`
+        ).run(cap.hash, tiles.width, tiles.height, tiles.tileSize, tiles.channels || 4, contentType);
+        const refStmt = this._p(
+          `INSERT OR IGNORE INTO image_manifest_tiles
+             (capture_hash, tile_index, tile_hash, x, y, width, height)
+           VALUES (?,?,?,?,?,?,?)`
+        );
+        tiles.tiles.forEach((tile, index) => {
+          refStmt.run(cap.hash, index, tile.hash, tile.x, tile.y, tile.width, tile.height);
+        });
+      }
+      this.db.exec("COMMIT");
+      return cap;
+    } catch (err) {
+      try { this.db.exec("ROLLBACK"); } catch { /* preserve original error */ }
+      throw err;
+    }
+  }
+
+  imageManifest(captureHash) {
+    const meta = this._p(
+      `SELECT capture_hash AS captureHash, width, height, tile_size AS tileSize,
+              channels, content_type AS contentType
+       FROM image_manifests WHERE capture_hash=?`
+    ).get(captureHash);
+    if (!meta) return null;
+    return {
+      ...meta,
+      tiles: this._p(
+        `SELECT tile_hash AS hash, x, y, width, height
+         FROM image_manifest_tiles WHERE capture_hash=? ORDER BY tile_index`
+      ).all(captureHash),
+    };
+  }
+
+  imageTileBody(tileHash) {
+    const row = this._p("SELECT body FROM image_tiles WHERE hash=?").get(tileHash);
+    return row ? Buffer.from(row.body) : null;
+  }
+
+  pruneImageTiles() {
+    const result = this._p(
+      "DELETE FROM image_tiles WHERE hash NOT IN (SELECT DISTINCT tile_hash FROM image_manifest_tiles)"
+    ).run();
+    return Number(result.changes);
+  }
+
   latestCapture(feed, atIso = null) {
     let row;
     if (atIso == null) {
@@ -155,9 +308,149 @@ export class Archive {
   }
 
   captureBody(hash) {
-    const row = this._p("SELECT body_gz FROM blobs WHERE hash=?").get(hash);
+    if (!this._hasPacks) {
+      const row = this._p("SELECT body_gz FROM blobs WHERE hash=?").get(hash);
+      if (!row) return null;
+      const gz = Buffer.from(row.body_gz);
+      if (gz.length > 0) return zlib.gunzipSync(gz);
+      // A zero-length body_gz means a writer packed this blob after this
+      // connection probed the schema — re-probe and retry via the pack path.
+      this._hasPacks =
+        this.db.prepare("SELECT COUNT(*) AS c FROM pragma_table_info('blobs') WHERE name='pack_id'").get().c > 0;
+      if (!this._hasPacks) return null;
+    }
+    const row = this._p(
+      "SELECT body_gz, bytes, pack_id, pack_offset FROM blobs WHERE hash=?"
+    ).get(hash);
     if (!row) return null;
+    if (row.pack_id != null) {
+      const raw = this._packRaw(row.pack_id, Number(row.pack_offset) + Number(row.bytes));
+      if (!raw) return null;
+      return Buffer.from(raw.subarray(row.pack_offset, Number(row.pack_offset) + Number(row.bytes)));
+    }
     return zlib.gunzipSync(Buffer.from(row.body_gz));
+  }
+
+  // Decompressed pack bodies, LRU-cached. minLength guards against a cached
+  // copy of an open pack that another connection has since appended to: blob
+  // offsets inside a pack never move, so a too-short buffer is simply stale.
+  _packRaw(packId, minLength = 0) {
+    let raw = this._packCache.get(packId);
+    if (raw && raw.length >= minLength) {
+      this._packCache.delete(packId); // refresh LRU position
+      this._packCache.set(packId, raw);
+      return raw;
+    }
+    const row = this._p("SELECT body_br FROM blob_packs WHERE id=?").get(packId);
+    if (!row) return null;
+    raw = zlib.brotliDecompressSync(Buffer.from(row.body_br));
+    if (this._packCache.has(packId)) {
+      this._packCacheBytes -= this._packCache.get(packId).length;
+      this._packCache.delete(packId);
+    }
+    this._packCache.set(packId, raw);
+    this._packCacheBytes += raw.length;
+    while (this._packCacheBytes > PACK_CACHE_MAX_BYTES && this._packCache.size > 1) {
+      const [oldId, oldRaw] = this._packCache.entries().next().value;
+      this._packCache.delete(oldId);
+      this._packCacheBytes -= oldRaw.length;
+    }
+    return raw;
+  }
+
+  /**
+   * packBlobs — move each feed's older text-like blobs into per-feed brotli
+   * packs. Keeps the newest `keepLatest` versions individually gzipped, appends
+   * to the feed's open pack (rewriting it) and seals packs at `targetRawBytes`
+   * uncompressed. Every appended slice is verified against its sha256 before
+   * commit. Idempotent; safe to run on every collector start / daily prune.
+   * → {feeds, blobs, packs, rawBytes, packedBytes}
+   */
+  packBlobs({ targetRawBytes = PACK_TARGET_RAW_BYTES, keepLatest = PACK_KEEP_LATEST } = {}) {
+    const totals = { feeds: 0, blobs: 0, packs: 0, rawBytes: 0, packedBytes: 0 };
+    const feeds = this._p("SELECT DISTINCT feed FROM captures").all().map((r) => r.feed);
+    for (const feed of feeds) {
+      const keep = new Set(
+        this._p("SELECT hash FROM captures WHERE feed=? ORDER BY first_at DESC, id DESC LIMIT ?")
+          .all(feed, keepLatest)
+          .map((r) => r.hash)
+      );
+      const eligible = this._p(
+        `SELECT bl.hash AS hash, bl.bytes AS bytes, MAX(c.content_type) AS contentType
+         FROM captures c JOIN blobs bl ON bl.hash=c.hash
+         WHERE c.feed=? AND bl.pack_id IS NULL
+         GROUP BY bl.hash ORDER BY MIN(c.first_at) ASC, MIN(c.id) ASC`
+      ).all(feed).filter((r) => !keep.has(r.hash) && isPackableContentType(r.contentType));
+      if (!eligible.length) continue;
+
+      const open = this._p(
+        "SELECT id, body_br AS bodyBr FROM blob_packs WHERE feed=? AND sealed=0 ORDER BY id DESC LIMIT 1"
+      ).get(feed);
+      let group = {
+        packId: open ? open.id : null,
+        baseRaw: open ? zlib.brotliDecompressSync(Buffer.from(open.bodyBr)) : EMPTY_BLOB,
+        members: [],
+      };
+      let runningRaw = group.baseRaw.length;
+      let packedAny = false;
+
+      const flush = (sealed) => {
+        if (!group.members.length) return;
+        const raw = Buffer.concat([group.baseRaw, ...group.members.map((m) => m.body)]);
+        const bodyBr = zlib.brotliCompressSync(raw, brotliPackOptions(raw.length));
+        const check = zlib.brotliDecompressSync(bodyBr);
+        for (const m of group.members) {
+          if (sha256(check.subarray(m.offset, m.offset + m.body.length)) !== m.hash) {
+            throw new Error(`blob pack verification failed for ${m.hash} (feed ${feed})`);
+          }
+        }
+        this.db.exec("BEGIN");
+        try {
+          let packId = group.packId;
+          if (packId == null) {
+            packId = Number(
+              this._p(
+                "INSERT INTO blob_packs (feed, created_at, sealed, raw_bytes, body_br) VALUES (?,?,?,?,?)"
+              ).run(feed, new Date().toISOString(), sealed ? 1 : 0, raw.length, bodyBr).lastInsertRowid
+            );
+          } else {
+            this._p("UPDATE blob_packs SET sealed=?, raw_bytes=?, body_br=? WHERE id=?").run(
+              sealed ? 1 : 0, raw.length, bodyBr, packId
+            );
+          }
+          const upd = this._p(
+            "UPDATE blobs SET pack_id=?, pack_offset=?, body_gz=? WHERE hash=?"
+          );
+          for (const m of group.members) upd.run(packId, m.offset, EMPTY_BLOB, m.hash);
+          this.db.exec("COMMIT");
+          if (this._packCache.has(packId)) {
+            this._packCacheBytes -= this._packCache.get(packId).length;
+            this._packCache.delete(packId);
+          }
+        } catch (err) {
+          try { this.db.exec("ROLLBACK"); } catch { /* preserve original error */ }
+          throw err;
+        }
+        totals.packs++;
+        totals.blobs += group.members.length;
+        totals.rawBytes += raw.length - group.baseRaw.length;
+        totals.packedBytes += bodyBr.length;
+        packedAny = true;
+        group = { packId: null, baseRaw: EMPTY_BLOB, members: [] };
+        runningRaw = 0;
+      };
+
+      for (const r of eligible) {
+        const body = this.captureBody(r.hash);
+        if (!body || body.length !== Number(r.bytes)) continue;
+        group.members.push({ hash: r.hash, body, offset: runningRaw });
+        runningRaw += body.length;
+        if (runningRaw >= targetRawBytes) flush(true);
+      }
+      flush(false); // remainder stays as the feed's open pack
+      if (packedAny) totals.feeds++;
+    }
+    return totals;
   }
 
   listVersions(feed, { fromIso = null, toIso = null, limit = 500, order = "desc" } = {}) {
@@ -438,8 +731,9 @@ export class Archive {
     const r = this._p(
       `INSERT OR IGNORE INTO deng_stats
         (ts, online_volunteers, pending_grades, error_grades, contributors_count,
-         pedal_usd_per_hour, pedal_runs, burn_tokens, burn_usd, month_label)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`
+         pedal_usd_per_hour, pedal_runs, burn_tokens, burn_usd,
+         total_tokens, total_usd, month_label)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
     ).run(
       row.ts,
       b(row.onlineVolunteers),
@@ -450,6 +744,8 @@ export class Archive {
       b(row.pedalRuns),
       b(row.burnTokens),
       b(row.burnUsd),
+      b(row.totalTokens),
+      b(row.totalUsd),
       b(row.monthLabel)
     );
     return Number(r.changes) > 0;
@@ -652,10 +948,20 @@ export class Archive {
       `SELECT ts, online_volunteers AS onlineVolunteers, pending_grades AS pendingGrades,
               error_grades AS errorGrades, contributors_count AS contributorsCount,
               pedal_usd_per_hour AS pedalUsdPerHour, pedal_runs AS pedalRuns,
-              burn_tokens AS burnTokens, burn_usd AS burnUsd, month_label AS monthLabel
+              burn_tokens AS burnTokens, burn_usd AS burnUsd,
+              total_tokens AS totalTokens, total_usd AS totalUsd, month_label AS monthLabel
        FROM deng_stats ${where} ORDER BY ts ASC`
     ).all(...params);
     return downsample(rows, maxPoints);
+  }
+
+  latestDengStats() {
+    return this._p(
+      `SELECT ts, online_volunteers AS onlineVolunteers,
+              pedal_usd_per_hour AS pedalUsdPerHour, burn_tokens AS burnTokens,
+              burn_usd AS burnUsd, total_tokens AS totalTokens, total_usd AS totalUsd
+       FROM deng_stats ORDER BY ts DESC LIMIT 1`
+    ).get() || null;
   }
 
   dbStats() {
@@ -663,6 +969,12 @@ export class Archive {
     const pageSize = this._p("PRAGMA page_size").get().page_size;
     const blobAgg = this._p(
       "SELECT COUNT(*) AS c, IFNULL(SUM(bytes),0) AS bytes FROM blobs"
+    ).get();
+    const packAgg = this._hasPacks
+      ? this._p("SELECT COUNT(*) AS c, IFNULL(SUM(LENGTH(body_br)),0) AS bytes FROM blob_packs").get()
+      : { c: 0, bytes: 0 };
+    const tileAgg = this._p(
+      "SELECT COUNT(*) AS c, IFNULL(SUM(bytes),0) AS bytes FROM image_tiles"
     ).get();
     const tableRows = this.db
       .prepare(
@@ -678,6 +990,10 @@ export class Archive {
       dbBytes: pageCount * pageSize,
       blobBytes: blobAgg.bytes,
       blobCount: blobAgg.c,
+      packBytes: packAgg.bytes,
+      packCount: packAgg.c,
+      tileBytes: tileAgg.bytes,
+      tileCount: tileAgg.c,
       tables,
     };
   }

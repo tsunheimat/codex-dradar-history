@@ -8,8 +8,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { extractAssetRefs } from "../src/collector.js";
-import { assetFeedId, assetContentType } from "../src/feeds.js";
-import { patchCodexHtml } from "../src/replay.js";
+import { assetFeedId, assetContentType, EXCLUDED_ASSET_PATHS } from "../src/feeds.js";
+import { patchCodexHtml, patchDengHtml } from "../src/replay.js";
 import { openArchive } from "../src/db.js";
 import { startServer } from "../src/server.js";
 
@@ -51,6 +51,16 @@ test("assetContentType maps extensions and defaults safely", () => {
   assert.equal(assetContentType("assets/dir/y.jpg"), "image/jpeg");
   assert.equal(assetContentType("assets/unknown.bin"), "application/octet-stream");
   assert.equal(assetContentType("assets/noext"), "application/octet-stream");
+});
+
+test("removed QR/community asset paths are excluded for every swept site", () => {
+  for (const path of [
+    "assets/codex-radar-group-qrcode-20260729.jpg",
+    "assets/codex-radar-group-qrcode-20260731.jpg",
+    "assets/wechat-qrcode.jpg",
+    "assets/community/official-account.png",
+    "assets/community/wechat-group.jpg",
+  ]) assert.equal(EXCLUDED_ASSET_PATHS.has(path), true, path);
 });
 
 test("server replays swept assets at /assets/* and /deng/assets/*", async () => {
@@ -103,4 +113,36 @@ test("patchCodexHtml strips the Cloudflare RUM beacon", () => {
     at: null,
   });
   assert.ok(!out.includes("cloudflareinsights.com"), "beacon removed from replay");
+});
+
+test("removed QR/community assets are excluded from replay markup", () => {
+  const codex = readFileSync(join(FIXTURES, "codexradar.html"), "utf8");
+  const deng = readFileSync(join(FIXTURES, "deng.html"), "utf8");
+  const ctx = { feedId: "test", capturedAt: "2026-07-31T00:00:00.000Z", at: null };
+  const codexOut = patchCodexHtml(codex, ctx);
+  const dengOut = patchDengHtml(deng, ctx);
+  for (const path of [
+    "codex-radar-group-qrcode-20260729.jpg",
+    "codex-radar-group-qrcode-20260731.jpg",
+    "wechat-qrcode.jpg",
+    "community/official-account.png",
+    "community/wechat-group.jpg",
+  ]) {
+    assert.equal(codexOut.includes(path) || dengOut.includes(path), false, `${path} removed`);
+  }
+});
+
+test("unchanged asset bytes are deduplicated across cache-buster updates", () => {
+  const dir = mkdtempSync(join(tmpdir(), "dradar2-asset-dedup-"));
+  const archive = openArchive(dir);
+  const feed = assetFeedId("deng", "assets/orbs/terra-transparent.png");
+  const body = Buffer.from("same-image-bytes");
+  const first = archive.saveCapture({ feed, capturedAt: "2026-07-31T00:00:00.000Z", body });
+  const second = archive.saveCapture({ feed, capturedAt: "2026-07-31T01:00:00.000Z", body });
+  assert.equal(first.changed, true);
+  assert.equal(second.changed, false);
+  assert.equal(second.deduped, true);
+  assert.equal(archive.feedsSummary().find((row) => row.feed === feed).versions, 1);
+  archive.close();
+  rmSync(dir, { recursive: true, force: true });
 });

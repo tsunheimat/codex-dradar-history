@@ -36,7 +36,6 @@ const SEED_MAP = [
   ['codex-logo.svg', 'codex:logo', null],
   ['deng-intro.html', 'deng:intro', null],
   ['i18n.js', 'deng:i18n', null],
-  ['radar-report.js', 'deng:report-js', null],
   ['deng-table.json', 'deng:table', 'cells'],
   ['deng-iq-history.json', 'deng:iq-history', 'iq'],
   ['deng-events.json', 'deng:events', 'events'],
@@ -135,13 +134,9 @@ test('GET /deng (no trailing slash) redirects to /deng/ so relative assets resol
   assert.equal(withAt.headers.get('location'), '/deng/?at=2026-07-20T00:00:00.000Z');
 });
 
-test('GET /deng/assets/radar-report.js is patched to the local /deng-api mount', async () => {
+test('GET /deng/assets/radar-report.js is removed with the ladder component', async () => {
   const r = await fetch(`${base}/deng/assets/radar-report.js`);
-  assert.equal(r.status, 200);
-  const js = await r.text();
-  assert.ok(js.includes('location.origin + "/deng-api"'), 'apiRoot rewritten to local mount');
-  assert.ok(!js.includes('api.codexradar.com'), 'no live upstream host served');
-  assert.ok(!js.includes('127.0.0.1:8399'), 'no dead dev-port served');
+  assert.equal(r.status, 404);
 });
 
 test('GET /deng-api/api/v1/table returns the exact fixture bytes', async () => {
@@ -150,6 +145,16 @@ test('GET /deng-api/api/v1/table returns the exact fixture bytes', async () => {
   const got = Buffer.from(await r.arrayBuffer());
   const expected = fs.readFileSync(path.join(FIX, 'deng-table.json'));
   assert.ok(got.equals(expected), 'replayed table bytes equal the captured fixture');
+});
+
+test('GET /deng-api/api/v1/summary returns aggregate IQ-footer data', async () => {
+  const r = await fetch(`${base}/deng-api/api/v1/summary`);
+  assert.equal(r.status, 200);
+  const summary = await r.json();
+  assert.equal(typeof summary.online_volunteers, 'number');
+  assert.equal(typeof summary.total_usd, 'number');
+  assert.equal(typeof summary.total_tokens, 'number');
+  assert.equal(typeof summary.pedal_speed.usd_per_hour, 'number');
 });
 
 test('?at= time-travel returns the version live at that instant', async () => {

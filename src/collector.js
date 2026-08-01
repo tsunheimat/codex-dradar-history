@@ -9,10 +9,13 @@ import {
   getFeed,
   ASSET_SWEEP_PAGES,
   EXPLICIT_ASSET_PATHS,
+  EXCLUDED_ASSET_PATHS,
   assetFeedId,
 } from "./feeds.js";
 import { fetchUrl } from "./fetchers.js";
 import { runExtractor } from "./extractors.js";
+import { sanitizeDengHtmlBody, sanitizeDengTableBody } from "./sanitizers.js";
+import { isCompositeComicAssetPath, tileComicPng } from "./image-tiles.js";
 
 const UPSTREAM_TS_FIELDS = [
   "generated_at",
@@ -27,7 +30,7 @@ const REQUEST_GAP_MS = 250;
 // Extractors whose per-poll "changed" count is churn, not a meaningful content
 // change, so it must NOT anchor raw storage for a keepRaw:"sampled" feed (else
 // the raw body would be re-stored every poll). See decideStoreRaw / SPEC §3.
-const SAMPLER_EXTRACTORS = new Set(["dengstats", "cells"]);
+const SAMPLER_EXTRACTORS = new Set(["dengstats"]);
 
 class HttpError extends Error {
   constructor(status, retryAfter) {
@@ -95,15 +98,13 @@ export function createCollector(config, archive) {
   }
 
   function decideStoreRaw(feed, extractorChanged) {
+    if (feed.keepRaw === "none") return false;
     if (feed.keepRaw === "always") return true;
     // sampled: keep raw only on a meaningful content change, or as a heartbeat.
     // Extractors that report churn on essentially every poll (SAMPLER_EXTRACTORS)
     // do NOT count as a meaningful content change (or the sampling would store
-    // the raw body every poll, defeating its purpose): `dengstats` always reports
-    // 1, and `cells` reports ≥1 changed cell on nearly every poll under
-    // continuous grading — which would re-store the ~1.9 MB deng:table body every
-    // 10 min. Both are anchored by the heartbeat instead; the per-cell deltas
-    // that make `cells` churn are already archived compactly in cell_history.
+    // the raw body every poll, defeating its purpose). Those feeds are anchored
+    // by the heartbeat instead.
     const meaningful = extractorChanged > 0 && !SAMPLER_EXTRACTORS.has(feed.extractor);
     if (meaningful) return true;
     const last = archive.latestCapture(feed.id);
@@ -198,6 +199,7 @@ export function createCollector(config, archive) {
     const todo = [];
     for (const ref of refs) {
       if (EXPLICIT_ASSET_PATHS.has(`${site.site}:${ref.path}`)) continue;
+      if (EXCLUDED_ASSET_PATHS.has(ref.path)) continue;
       const feedId = assetFeedId(site.site, ref.path);
       const st = archive.getFeedState(feedId);
       const have = archive.latestCapture(feedId);
@@ -222,13 +224,39 @@ export function createCollector(config, archive) {
         });
         if (res.status >= 200 && res.status < 300 && res.body) {
           anyOk = true;
-          const cap = archive.saveCapture({
-            feed: feedId,
-            capturedAt: nowIso(),
-            body: res.body,
-            httpStatus: res.status,
-            contentType: res.contentType,
-          });
+          const capturedAt = nowIso();
+          let cap;
+          if (isCompositeComicAssetPath(ref.path)) {
+            try {
+              cap = archive.saveImageCapture({
+                feed: feedId,
+                capturedAt,
+                tiles: await tileComicPng(res.body),
+                rawBody: res.body,
+                httpStatus: res.status,
+                contentType: res.contentType || "image/png",
+              });
+            } catch (tileErr) {
+              // A decoder failure must not lose the upstream asset. The raw
+              // fallback is still content-hash deduplicated.
+              console.warn(`[collector] tile fallback ${ref.path}: ${tileErr.message || tileErr}`);
+              cap = archive.saveCapture({
+                feed: feedId,
+                capturedAt,
+                body: res.body,
+                httpStatus: res.status,
+                contentType: res.contentType,
+              });
+            }
+          } else {
+            cap = archive.saveCapture({
+              feed: feedId,
+              capturedAt,
+              body: res.body,
+              httpStatus: res.status,
+              contentType: res.contentType,
+            });
+          }
           if (cap.changed) stored++;
           // Remember the cache-buster we mirrored, even when bytes were unchanged.
           archive.setFeedState(feedId, {
@@ -309,11 +337,16 @@ export function createCollector(config, archive) {
           }
         }
         const upstreamTs = extractUpstreamTs(feed, res.body);
+        const archiveBody = feed.id === "deng:html"
+          ? sanitizeDengHtmlBody(res.body)
+          : feed.id === "deng:table" || feed.id === "codex:intel-efficiency"
+            ? sanitizeDengTableBody(res.body)
+            : res.body;
         const storeRaw = decideStoreRaw(feed, changed);
         const cap = archive.saveCapture({
           feed: feed.id,
           capturedAt,
-          body: res.body,
+          body: archiveBody,
           httpStatus: res.status,
           upstreamTs,
           contentType: res.contentType,
@@ -375,11 +408,22 @@ function parseArgs(argv) {
   return opts;
 }
 
+function runMaintenance(archive, config) {
+  archive.pruneRuns(config.runsKeepDays);
+  const p = archive.packBlobs();
+  if (p.blobs > 0) {
+    console.log(
+      `[pack] ${p.blobs} blobs from ${p.feeds} feeds → ${p.packs} pack writes, ` +
+      `${(p.rawBytes / 1048576).toFixed(1)}MB raw → ${(p.packedBytes / 1048576).toFixed(1)}MB brotli`
+    );
+  }
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const config = loadConfig();
   const archive = openArchive(config.dataDir);
-  archive.pruneRuns(config.runsKeepDays);
+  runMaintenance(archive, config);
 
   let feeds = FEEDS;
   if (opts.feed) {
@@ -436,15 +480,14 @@ async function main() {
     nextDue.set(f.id, due);
   }
 
-  // Prune the runs audit log at startup and then periodically, so a long-running
-  // (restart: unless-stopped) collector actually honours RUNS_KEEP_DAYS as a
-  // rolling window instead of only trimming on process restart.
+  // Daily maintenance: prune the runs audit log (so a long-running collector
+  // honours RUNS_KEEP_DAYS as a rolling window) and pack yesterday's blobs.
   const PRUNE_INTERVAL_MS = 24 * 3600 * 1000;
   let lastPruneAt = Date.now();
 
   while (running) {
     if (Date.now() - lastPruneAt >= PRUNE_INTERVAL_MS) {
-      archive.pruneRuns(config.runsKeepDays);
+      runMaintenance(archive, config);
       lastPruneAt = Date.now();
     }
     const now = Date.now();

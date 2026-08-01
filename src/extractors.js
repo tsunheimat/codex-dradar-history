@@ -198,16 +198,24 @@ function dengstats(archive, body, capturedAt) {
   const pedal = d.pedal_speed && typeof d.pedal_speed === "object" ? d.pedal_speed : null;
   const burn = d.latest_burn && typeof d.latest_burn === "object" ? d.latest_burn : null;
   const month = d.month && typeof d.month === "object" ? d.month : null;
+  const contributors = Array.isArray(d.contributors) ? d.contributors : [];
+  const totals = contributors.reduce((out, contributor) => {
+    out.tokens += Number(contributor && contributor.tokens) || 0;
+    out.usd += Number(contributor && contributor.usd) || 0;
+    return out;
+  }, {tokens: 0, usd: 0});
   archive.insertDengStats({
     ts: capturedAt,
     onlineVolunteers: intOrNull(d.online_volunteers),
     pendingGrades: intOrNull(d.pending_grades),
     errorGrades: intOrNull(d.error_grades),
-    contributorsCount: Array.isArray(d.contributors) ? d.contributors.length : null,
+    contributorsCount: contributors.length || null,
     pedalUsdPerHour: pedal ? num(pedal.usd_per_hour) : null,
     pedalRuns: pedal ? intOrNull(pedal.actual_runs) : null,
     burnTokens: burn ? intOrNull(burn.tokens) : null,
     burnUsd: burn ? num(burn.usd) : null,
+    totalTokens: totals.tokens,
+    totalUsd: totals.usd,
     monthLabel: month ? str(month.label) : null,
   });
   return 1; // always samples — a time-series point per poll

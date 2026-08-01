@@ -2,7 +2,7 @@
 // Fields: {id, url, kind, intervalSec, extractor, keepRaw, contentType}
 //   kind: page | json | xml | asset
 //   extractor: null or a key into EXTRACTORS
-//   keepRaw: "always" (store every changed poll) | "sampled" (store on change or heartbeat)
+//   keepRaw: "always" | "sampled" | "none"
 
 export const FEEDS = [
   { id: "codex:html",            url: "https://codexradar.com/",                                   kind: "page",  intervalSec: 600,   extractor: null,          keepRaw: "always",  contentType: "text/html; charset=utf-8" },
@@ -18,11 +18,12 @@ export const FEEDS = [
   { id: "deng:html",             url: "https://deng.codexradar.com/",                              kind: "page",  intervalSec: 600,   extractor: null,          keepRaw: "always",  contentType: "text/html; charset=utf-8" },
   { id: "deng:intro",            url: "https://deng.codexradar.com/intro",                         kind: "page",  intervalSec: 21600, extractor: null,          keepRaw: "always",  contentType: "text/html; charset=utf-8" },
   { id: "deng:i18n",             url: "https://deng.codexradar.com/assets/i18n.js",                kind: "asset", intervalSec: 21600, extractor: null,          keepRaw: "always",  contentType: "text/javascript" },
-  { id: "deng:report-js",        url: "https://deng.codexradar.com/assets/radar-report.js",        kind: "asset", intervalSec: 21600, extractor: null,          keepRaw: "always",  contentType: "text/javascript" },
-  { id: "deng:table",            url: "https://api.codexradar.com/api/v1/table?ui=1",              kind: "json",  intervalSec: 600,   extractor: "cells",       keepRaw: "sampled", contentType: "application/json" },
+  // Keep the latest table snapshot for /deng/ replay, but do not archive the
+  // subscription-tier matrix as per-cell history.
+  { id: "deng:table",            url: "https://api.codexradar.com/api/v1/table?ui=1",              kind: "json",  intervalSec: 600,   extractor: null,          keepRaw: "sampled", contentType: "application/json" },
   { id: "deng:iq-history",       url: "https://api.codexradar.com/api/v1/iq-history",              kind: "json",  intervalSec: 900,   extractor: "iq",          keepRaw: "always",  contentType: "application/json" },
   { id: "deng:events",           url: "https://api.codexradar.com/api/v1/events?n=20",             kind: "json",  intervalSec: 300,   extractor: "events",      keepRaw: "always",  contentType: "application/json" },
-  { id: "deng:leaderboard",      url: "https://api.codexradar.com/api/v1/leaderboard",             kind: "json",  intervalSec: 900,   extractor: "dengstats",   keepRaw: "sampled", contentType: "application/json" },
+  { id: "deng:leaderboard",      url: "https://api.codexradar.com/api/v1/leaderboard",             kind: "json",  intervalSec: 900,   extractor: "dengstats",   keepRaw: "none",    contentType: "application/json" },
 ];
 
 const BY_ID = new Map(FEEDS.map((f) => [f.id, f]));
@@ -51,7 +52,23 @@ export const ASSET_SWEEP_PAGES = new Map([
 export const EXPLICIT_ASSET_PATHS = new Set([
   "codex:assets/codex-logo.svg",
   "deng:assets/i18n.js",
-  "deng:assets/radar-report.js",
+]);
+
+// Assets used only by the removed contributor ladder. Do not mirror them from
+// the upstream HTML sweep after the component is removed from replay.
+export const EXCLUDED_ASSET_PATHS = new Set([
+  "assets/radar-report.js",
+  "assets/codex-radar-group-qrcode-20260729.jpg",
+  "assets/codex-radar-group-qrcode-20260731.jpg",
+  "assets/wechat-qrcode.jpg",
+  "assets/community/official-account.png",
+  "assets/community/wechat-group.jpg",
+  "assets/bikes/ladder-city.png",
+  "assets/bikes/ladder-city-v2.png",
+  "assets/bikes/ladder-road.png",
+  "assets/bikes/ladder-road-v2.png",
+  "assets/bikes/ladder-mountain.png",
+  "assets/bikes/ladder-mountain-v2.png",
 ]);
 
 export function assetFeedId(site, path) {

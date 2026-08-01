@@ -1,11 +1,31 @@
 -- dradar2 archive schema (authoritative — applied idempotently by src/db.js)
 
--- Content-addressed raw payloads, gzip level 9.
+-- Content-addressed raw payloads. New blobs are stored gzip level 9 in body_gz.
+-- The packer later moves text-like history into per-feed brotli packs (consecutive
+-- versions are ~99% identical, so a shared compression window is ~8x smaller):
+-- a packed blob has pack_id/pack_offset set and a zero-length body_gz; its bytes
+-- column still holds the uncompressed length (= slice length inside the pack).
 CREATE TABLE IF NOT EXISTS blobs (
   hash        TEXT PRIMARY KEY,           -- sha256 hex of raw (uncompressed) bytes
   bytes       INTEGER NOT NULL,           -- uncompressed size
-  body_gz     BLOB NOT NULL
+  body_gz     BLOB NOT NULL,              -- zero-length when packed
+  pack_id     INTEGER REFERENCES blob_packs(id),
+  pack_offset INTEGER
 );
+
+-- Per-feed brotli streams of concatenated consecutive blob bodies (lgwin=24 so
+-- the window spans every version in the pack). One open (sealed=0) pack per
+-- feed is appended to by rewriting; packs seal for good once raw_bytes reaches
+-- the packer's target and are never modified again.
+CREATE TABLE IF NOT EXISTS blob_packs (
+  id         INTEGER PRIMARY KEY,
+  feed       TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  sealed     INTEGER NOT NULL DEFAULT 0,
+  raw_bytes  INTEGER NOT NULL,            -- uncompressed concatenation length
+  body_br    BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_blob_packs_feed_sealed ON blob_packs(feed, sealed);
 
 -- One row per observed content-state period of a feed. Consecutive identical polls
 -- extend last_at instead of inserting.
@@ -137,6 +157,8 @@ CREATE TABLE IF NOT EXISTS deng_stats (
   pedal_runs         INTEGER,
   burn_tokens        INTEGER,
   burn_usd           REAL,
+  total_tokens       INTEGER,
+  total_usd          REAL,
   month_label        TEXT
 ) WITHOUT ROWID;
 
@@ -145,3 +167,32 @@ CREATE TABLE IF NOT EXISTS avatars (
   svg        BLOB NOT NULL,              -- 1-byte tombstone when upstream has none
   fetched_at TEXT NOT NULL
 );
+
+-- Shared decoded-image tiles for composite assets. The capture row stores a
+-- small manifest blob; tile bytes are content-addressed across every image.
+CREATE TABLE IF NOT EXISTS image_tiles (
+  hash       TEXT PRIMARY KEY,
+  bytes      INTEGER NOT NULL,
+  body       BLOB NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS image_manifests (
+  capture_hash TEXT PRIMARY KEY REFERENCES blobs(hash),
+  width        INTEGER NOT NULL,
+  height       INTEGER NOT NULL,
+  tile_size    INTEGER NOT NULL,
+  channels     INTEGER NOT NULL DEFAULT 4,
+  content_type TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS image_manifest_tiles (
+  capture_hash TEXT NOT NULL REFERENCES image_manifests(capture_hash),
+  tile_index   INTEGER NOT NULL,
+  tile_hash    TEXT NOT NULL REFERENCES image_tiles(hash),
+  x            INTEGER NOT NULL,
+  y            INTEGER NOT NULL,
+  width        INTEGER NOT NULL,
+  height       INTEGER NOT NULL,
+  PRIMARY KEY (capture_hash, tile_index)
+);
+CREATE INDEX IF NOT EXISTS idx_image_manifest_tiles_hash ON image_manifest_tiles(tile_hash);

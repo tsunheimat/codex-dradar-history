@@ -6,6 +6,33 @@
 
 const TIMEBAR_SRC = "/__archive/timebar.js";
 
+const REMOVED_ASSET_PATHS = [
+  "assets/codex-radar-group-qrcode-20260729.jpg",
+  "assets/codex-radar-group-qrcode-20260731.jpg",
+  "assets/wechat-qrcode.jpg",
+  "assets/community/official-account.png",
+  "assets/community/wechat-group.jpg",
+];
+
+// The upstream page's inline script assumes these matrix controls exist and
+// attaches listeners without null checks. Keep inert, hidden controls so the
+// rest of /deng/ continues to initialize after the visible matrix is removed.
+const DENG_MATRIX_COMPAT = `<div id="matrix-tools" hidden aria-hidden="true">
+  <div id="tiers"><button data-t="plus"></button><button data-t="pro-5x"></button><button data-t="pro-20x"></button></div>
+  <button id="suggest-btn" type="button"></button><button id="mine-btn" type="button"></button>
+  <select id="matrix-status"><option value="all"></option></select>
+  <select id="matrix-model"><option value="all"></option></select>
+  <select id="matrix-effort"><option value="all"></option></select>
+  <button id="matrix-more" type="button"></button><button id="model-config-toggle" type="button"></button>
+  <div id="matrix-advanced" hidden></div>
+  <input id="matrix-claimer"><select id="matrix-result"><option value="all"></option></select>
+  <input id="matrix-pct-min"><input id="matrix-pct-max"><input id="matrix-mult-min"><input id="matrix-mult-max">
+  <button id="matrix-reset" type="button"></button><div id="matrix-filter-foot"></div>
+</div><div id="tablebox" hidden aria-hidden="true"></div>
+<div id="contrib-body" hidden></div><button id="lt-month" hidden></button>
+<button id="lt-all" hidden></button><span id="settle-info" hidden></span>
+<button id="copy-setup-prompt" hidden></button>\n`;
+
 /**
  * resolveAt(query) → ISO-8601 string | null
  * Accepts either the parsed query object ({at: "..."}) or a bare string.
@@ -64,6 +91,12 @@ function stripExternalBeacons(html) {
   );
 }
 
+function stripRemovedAssetImages(html) {
+  return html.replace(/<img\b[^>]*>/gi, (tag) =>
+    REMOVED_ASSET_PATHS.some((path) => tag.includes(path)) ? "" : tag
+  );
+}
+
 /** Insert the timebar loader right after the first <head> tag (case-insensitive). */
 function injectTimebar(html, ctx) {
   const script = timebarScript(ctx);
@@ -81,8 +114,13 @@ function injectTimebar(html, ctx) {
  * Injects the timebar and rewrites the "前往分布式雷达" backlink to the local clone.
  */
 export function patchCodexHtml(html, ctx) {
-  let out = injectTimebar(stripExternalBeacons(html), ctx);
+  let out = injectTimebar(stripRemovedAssetImages(stripExternalBeacons(html)), ctx);
   out = out.replace(/href="https:\/\/deng\.codexradar\.com\/?"/gi, 'href="/deng/"');
+  // Keep archive navigation beside the upstream distributed-radar shortcut.
+  out = out.replace(
+    /(<a class="site-announcement-distributed"[^>]*>[^<]*<\/a>)/i,
+    '$1<a class="site-announcement-history" href="/history">长期历史</a>'
+  );
   return out;
 }
 
@@ -93,8 +131,47 @@ export function patchCodexHtml(html, ctx) {
  * warning flag if the API base rewrite did not match (upstream markup drifted).
  */
 export function patchDengHtml(html, ctx) {
-  let out = stripExternalBeacons(html);
+  let out = stripRemovedAssetImages(stripExternalBeacons(html));
   let apiPatched = false;
+
+  // Remove the subscription-tier controls and the benchmark-cell matrix from
+  // the replay. The latest table response is still consumed by the summary
+  // cards above this block, but no matrix content is exposed or constructed.
+  const matrixStart = out.indexOf('<div class="matrix-tools" id="matrix-tools">');
+  const joinStart = matrixStart >= 0 ? out.indexOf('<section id="join">', matrixStart) : -1;
+  if (matrixStart >= 0 && joinStart > matrixStart) {
+    out = out.slice(0, matrixStart) + DENG_MATRIX_COMPAT + out.slice(joinStart);
+  }
+  if (!out.includes('id="matrix-tools"')) {
+    out = out.replace(/(<body[^>]*>)/i, "$1" + DENG_MATRIX_COMPAT);
+  }
+
+  // Remove the complete contributor ladder and its hero jump link. Aggregate
+  // leaderboard totals remain available to the upper IQ footer via /summary.
+  out = out.replace(/\s*<section id="contributors">[\s\S]*?<\/section>\s*/i, "\n");
+  out = out.replace(/\s*<section id="join">[\s\S]*?<\/section>\s*/i, "\n");
+  for (const title of ["会烧我多少额度？", "积分怎么算？", "天梯排名怎样影响并发和领题数？", "自行车和蹬踏时间怎么算？"]) {
+    const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp("\\s*<details><summary>" + escaped + "<\\/summary>[\\s\\S]*?<\\/details>", "i"), "");
+  }
+  out = out.replace(/\s*<a class="hero-link ladder-link"[^>]*>[\s\S]*?<\/a>/i, "");
+  out = out.replace(/\s*<button class="report-launch"[^>]*>[\s\S]*?<\/button>/i, "");
+  out = out.replace(/\s*<script src="assets\/radar-report\.js[^>]*><\/script>/i, "");
+
+  out = out.replace(
+    "    updateTicker();\n    document.getElementById(\"tablebox\").classList.toggle(\"selection-filter\", showSelectedOnly);",
+    "    updateTicker();\n    if (document.getElementById(\"matrix-tools\").hidden) return;\n    document.getElementById(\"tablebox\").classList.toggle(\"selection-filter\", showSelectedOnly);"
+  );
+
+  out = out.replace('fetch(API + "/api/v1/leaderboard", opts)', 'fetch(API + "/api/v1/summary", opts)');
+  out = out.replace(
+    'totalUsd = (d.contributors || []).reduce(function (s, c) { return s + (c.usd || 0); }, 0);',
+    'totalUsd = d.total_usd == null ? (d.contributors || []).reduce(function (s, c) { return s + (c.usd || 0); }, 0) : Number(d.total_usd);'
+  );
+  out = out.replace(
+    'totalTokens = (d.contributors || []).reduce(function (s, c) { return s + (c.tokens || 0); }, 0);',
+    'totalTokens = d.total_tokens == null ? (d.contributors || []).reduce(function (s, c) { return s + (c.tokens || 0); }, 0) : Number(d.total_tokens);'
+  );
 
   // 1. API base: `var API = "https://api." + apex;` → local mount.
   const API_EXACT = 'var API = "https://api." + apex;';
@@ -148,6 +225,12 @@ export function patchDengHtml(html, ctx) {
     'if (iqLink) iqLink.href = "/";'
   );
 
+  // Add an archive shortcut beside the upstream DRadar source tab.
+  out = out.replace(
+    /(<a class="hero-link source-link"[^>]*>[\s\S]*?<\/a>)/i,
+    '$1<a class="hero-link history-link" href="/history">长期历史</a>'
+  );
+
   // 4. Timebar first (after all text patches so their indices are unaffected).
   out = injectTimebar(out, ctx);
 
@@ -163,31 +246,5 @@ export function patchDengHtml(html, ctx) {
 
 /** patchIntroHtml — deng intro page: timebar injection + beacon strip only. */
 export function patchIntroHtml(html, ctx) {
-  return injectTimebar(stripExternalBeacons(html), ctx);
-}
-
-/**
- * patchReportJs — deng radar-report.js asset. The report launcher re-derives its
- * own API base in apiRoot() (localhost → http://127.0.0.1:8399, otherwise →
- * https://api.codexradar.com) instead of using the page's patched inline `var
- * API`. Served verbatim, its fetches would hit the dead dev port (localhost) or
- * leak live cross-origin requests to upstream (LAN) — bypassing the archive.
- * Rewrite apiRoot() to always return the local /deng-api mount, analogous to the
- * deng-HTML var-API patch. The timebar fetch wrapper then propagates ?at=.
- */
-export function patchReportJs(js) {
-  const src = String(js);
-  const re = /function apiRoot\(\)\s*\{[\s\S]*?\n {2}\}/;
-  const repl =
-    "function apiRoot() {\n" +
-    '    // dradar2: always talk to the local archive replay mount.\n' +
-    '    return location.origin + "/deng-api";\n' +
-    "  }";
-  if (re.test(src)) return src.replace(re, repl);
-  // Fallback if the function shape drifted: rewrite the known upstream bases.
-  // (These URL literals only appear inside apiRoot in the captured asset.)
-  return src
-    .replace(/return "http:\/\/127\.0\.0\.1:8399";/g, 'return location.origin + "/deng-api";')
-    .replace(/"https:\/\/api\.codexradar\.com"/g, '(location.origin + "/deng-api")')
-    .replace(/"https:\/\/api\.claudecoderadar\.com"/g, '(location.origin + "/deng-api")');
+  return injectTimebar(stripRemovedAssetImages(stripExternalBeacons(html)), ctx);
 }

@@ -19,7 +19,8 @@ Two small Node processes share one SQLite file:
 - a **server** that replays **pixel-faithful clones of both sites at any archived instant**
   (`?at=…`), plus custom long-range history dashboards that reach far past the upstream windows.
 
-Everything runs on the Node standard library — **zero runtime npm dependencies**, no build step.
+The service uses the Node standard library plus **one runtime npm dependency** (`sharp` for comic
+image tiling), with no build step.
 
 ---
 
@@ -46,7 +47,7 @@ while touching upstream far more gently than a single open browser tab (see
   │  backoff,   │            │  size cap,   │              │ ratings · subscribers ·    │
   │  avatars)   │            │  etag/304)   │              │ rss · dengstats            │
   └─────────────┘            └──────────────┘              └───────────────┬───────────┘
-         │  raw bodies (content-addressed, gzip-9)                         │ merged rows
+         │  raw bodies (content-addressed, gzip-9 → brotli packs)          │ merged rows
          ▼                                                                 ▼
   ┌──────────────────────────────────────────────────────────────────────────────────┐
   │ db.js  →  archive.sqlite (WAL)                                                     │
@@ -64,7 +65,15 @@ while touching upstream far more gently than a single open browser tab (see
 ```
 
 - **Content-addressed storage.** Each raw body is `sha256`-hashed; unchanged polls extend a
-  capture's `last_at` instead of storing a duplicate. Blobs are gzip level 9.
+  capture's `last_at` instead of storing a duplicate. New blobs are gzip level 9; a daily packer
+  then folds each feed's older text snapshots into one **brotli stream per feed** — consecutive
+  versions share the whole page shell and differ by ~1 KB of data, so the packed history is ~8×
+  smaller than per-snapshot gzip. Reads are transparent; every packed byte is sha256-verified.
+- **Composite-image tiling.** Dated `radar-high-readout-comic-*.png` assets are decoded into
+  content-addressed WebP tiles (quality 90 — visually faithful, ~4× smaller than lossless; comics
+  never share pixels between frames, so lossless tiles bought nothing) plus a small manifest;
+  if a tiled representation is larger than the original gzip-9 PNG, capture automatically falls
+  back to the original bytes. Replay composes the manifest back to PNG at the same URL.
 - **State periods.** `captures` records one row per *content-state period* of a feed, so
   `?at=<t>` resolves to the version that was live at instant `t` (newest capture with
   `first_at <= t`).
@@ -77,17 +86,15 @@ while touching upstream far more gently than a single open browser tab (see
 - **Discovered-asset sweep.** After each page poll the collector scans the HTML for same-origin
   `assets/...` references (QR codes, dated comics, orb/bike art — the set changes over time) and
   mirrors new or re-versioned ones automatically (≤ 30 per sweep, keyed by cache-buster). The
-  replayed pages therefore render fully offline; the upstream Cloudflare analytics beacon is
-  stripped so a replica page makes **no third-party requests** (the deng leaderboard's GitHub
-  contributor avatars are the one accepted exception — live `avatars.githubusercontent.com`
-  images, not codexradar data).
+  replayed pages therefore render fully offline; the upstream Cloudflare analytics beacon and
+  removed ladder assets are excluded, so the replica makes **no third-party requests**.
 
 ---
 
 ## Quickstart (local, no Docker)
 
-Requires **Node ≥ 22.5** (developed and shipped on **Node 24**). No `npm install` — there are no
-dependencies.
+Requires **Node ≥ 22.5** (developed and shipped on **Node 24**). Install the native image codec
+dependency once with `npm install` (the `sharp` package powers comic tile encoding/decoding).
 
 ```sh
 # 1. (optional) seed the archive with the bundled real fixtures for an instant offline demo
@@ -122,7 +129,7 @@ node --test 'test/*.test.js'    # DB, extractors, fetchers, replay, full server 
 
 > On Node 24 pass the glob (`'test/*.test.js'`), not the bare directory: the test runner cannot
 > take a directory argument, and its no-argument default glob would also try to execute the `.js`
-> asset fixtures under `test/fixtures/`. The glob scopes discovery to the five suite files.
+> asset fixtures under `test/fixtures/`. The glob scopes discovery to the test suite files.
 
 The suite uses only `node:test` + `node:assert/strict`, temp data dirs (never `./data`), and a
 local self-signed HTTPS server for the fetch layer. **No test touches the upstream network** — it
@@ -200,9 +207,9 @@ present; real environment variables win). See `.env.example`.
 | `GET /assets/codex-logo.svg`, `/favicon.ico` | logo |
 | `GET /assets/*` | any page-referenced asset (QR codes, comics, …) mirrored by the discovered-asset sweep |
 | `GET /deng`, `/deng/`, `/deng/en`, `/deng/intro` | 分布式雷达 pages (patched) |
-| `GET /deng/assets/i18n.js`, `/deng/assets/radar-report.js` | deng assets |
-| `GET /deng/assets/*` | swept deng assets (orb/bike art, community images, …) |
-| `GET /deng-api/api/v1/{table,iq-history,events,leaderboard,radar-insights}` | deng API payloads |
+| `GET /deng/assets/i18n.js` | deng assets |
+| `GET /deng/assets/*` | swept deng assets (model art, community images, …) |
+| `GET /deng-api/api/v1/{table,iq-history,events,summary,radar-insights}` | reduced deng API payloads |
 | `GET /deng-api/api/v1/avatar/<seed>.svg` | archived avatar (neutral fallback if unknown) |
 
 **Archive & history APIs** (JSON, all under `/archive-api/`):
@@ -224,17 +231,20 @@ and the injected `/__archive/timebar.js`.
 
 ## Storage growth estimate
 
-Storage is dominated by the two large HTML pages and the ~1.9 MB deng `table` payload; the merged
-history tables grow slowly by comparison. With content-hash dedup (identical polls cost nothing) and
-gzip-9 blobs, a rough **worst case is ~20–60 MB/day**, and typically much less because the pages do
-not actually change on every poll.
+Storage is dominated by the dated comics (~12 frames/day at ~350 KB each as q90 tiles); the text
+feeds all but vanish once packed, and the merged history tables grow slowly by comparison. With
+content-hash dedup (identical polls cost nothing), per-feed brotli packing of text history
+(consecutive versions differ by ~1 KB, measured ~8× smaller than per-snapshot gzip-9) and
+quality-90 comic tiles, expect roughly **~5 MB/day (~150 MB/month)**. On an archive that predates
+packing, run `npm run compact` once to re-encode lossless tiles, pack the backlog and VACUUM —
+measured on live data this shrank the database from 43.5 MB to 11.7 MB.
 
 | Feed(s) | Raw size | Poll cadence | Dominant cost |
 |---|---|---|---|
 | `codex:html`, `deng:html` | ~350–400 KB each | 10 min | biggest contributor when content churns |
-| `deng:table` | ~1.9 MB | 10 min, **sampled** (raw anchored by the ~hourly heartbeat; per-cell deltas tracked in `cell_history`) | large but rarely re-stored |
-| `codex:current`, `deng:iq-history`, ratings, leaderboard | 30 KB–430 KB | 5–15 min | modest, mostly deduped |
-| merged tables (iq_points, deng_events, cell_history, …) | small rows | per change | grows steadily but cheaply |
+| `deng:table` | ~2.25 MB upstream / ~108 KB archived | 10 min, **sampled** (heartbeat; reduced IQ/efficiency fields only) | upper model-IQ and efficiency widgets |
+| `codex:current`, `deng:iq-history`, ratings, leaderboard summary | 30 KB–430 KB | 5–15 min | modest, mostly deduped |
+| merged tables (iq_points, deng_events, …) | small rows | per change | matrix history and contributor rows are no longer populated |
 
 Lower the footprint (and the request rate) by raising `INTERVAL_SCALE` or setting per-feed
 `FEED_INTERVALS`. Old collector audit rows are pruned automatically after `RUNS_KEEP_DAYS` (at
