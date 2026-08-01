@@ -160,8 +160,8 @@ The SQLite database (`archive.sqlite` + WAL files) persists in `./data` on the h
 
 ### Container image
 
-GitHub Actions tests the application and smoke-tests the container on pull requests. Pushes to
-`master` and `v*` tags publish multi-platform images for `linux/amd64` and `linux/arm64` to:
+GitHub Actions uses GitHub-hosted npm and BuildKit caches, then tests, builds, and smoke-tests the
+container once per run. Pushes to `master` and `v*` tags publish the tested `linux/amd64` image to:
 
 ```text
 ghcr.io/tsunheimat/codex-dradar-history:latest
