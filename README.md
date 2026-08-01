@@ -140,10 +140,10 @@ runs entirely against the captured fixtures in `test/fixtures/`.
 ## Production (Docker Compose)
 
 ```sh
-docker compose up -d --build
+docker compose up -d
 ```
 
-This starts two services sharing the `./data` volume:
+Compose pulls the published GHCR image and starts two services sharing the `./data` volume:
 
 | service     | command                 | notes                                             |
 |-------------|-------------------------|---------------------------------------------------|
@@ -157,6 +157,12 @@ docker compose run --rm web node scripts/seed-fixtures.js
 ```
 
 The SQLite database (`archive.sqlite` + WAL files) persists in `./data` on the host.
+
+To pin a release or an immutable commit image, set `DRADAR2_IMAGE` in `.env` before deploying:
+
+```sh
+DRADAR2_IMAGE=ghcr.io/tsunheimat/codex-dradar-history:sha-40671a7
+```
 
 ### Container image
 

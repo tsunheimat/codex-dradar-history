@@ -2,13 +2,13 @@
 #   web       : read-only replay + long-term history UI (port 3210)
 #   collector : polls the public upstream GET endpoints and archives every observation
 #
-# Start:   docker compose up -d --build
+# Start:   docker compose up -d
 # Seed:    docker compose run --rm web node scripts/seed-fixtures.js   (optional offline demo data)
 
 services:
   web:
-    build: .
-    image: dradar2:latest
+    image: ${DRADAR2_IMAGE:-ghcr.io/tsunheimat/codex-dradar-history:latest}
+    pull_policy: always
     command: node src/server.js
     ports:
       - "3210:3210"
@@ -27,8 +27,8 @@ services:
       start_period: 5s
 
   collector:
-    # Reuses the image built by `web`; depends_on guarantees the build happens first.
-    image: dradar2:latest
+    image: ${DRADAR2_IMAGE:-ghcr.io/tsunheimat/codex-dradar-history:latest}
+    pull_policy: always
     command: node src/collector.js
     environment:
       DATA_DIR: /data
@@ -36,4 +36,5 @@ services:
       - ./data:/data
     restart: unless-stopped
     depends_on:
-      - web
+      web:
+        condition: service_healthy
