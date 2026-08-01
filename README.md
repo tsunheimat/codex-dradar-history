@@ -1,16 +1,18 @@
-# dradar2
+# codex-dradar-history
 
 ## A long-term history collector for Codex Radar
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 **Live archive:** [dradar.webhei.top](https://dradar.webhei.top)
 
-dradar2 continuously collects the public, read-only data behind [Codex Radar](https://codexradar.com)
+codex-dradar-history continuously collects the public, read-only data behind [Codex Radar](https://codexradar.com)
 and [Distributed Radar](https://deng.codexradar.com), then turns short-lived dashboards into a
 searchable archive. It preserves snapshots, events, model ratings, IQ data, subscriber counts,
 benchmark state changes, RSS items, and operational statistics so they can be explored long after
 the upstream rolling windows have moved on.
 
-> 数据来自 Codex 雷达 · codexradar.com. dradar2 is an independent archive and is not affiliated
+> 数据来自 Codex 雷达 · codexradar.com. codex-dradar-history is an independent archive and is not affiliated
 > with the upstream project.
 
 ## Why it exists
@@ -155,7 +157,7 @@ Configuration is read from environment variables; a local `.env` file is support
 
 ## Courtesy, security, and content
 
-dradar2 uses public GET endpoints only, identifies itself with `USER_AGENT`, keeps the request rate
+codex-dradar-history uses public GET endpoints only, identifies itself with `USER_AGENT`, keeps the request rate
 configurable, and preserves upstream attribution. If you run an instance, keep the cadence polite
 and leave the attribution in place.
 
@@ -164,5 +166,5 @@ keep it on a trusted network or behind your own authentication proxy/VPN. Set `B
 local-only access.
 
 This is a personal, non-commercial archival tool. Archived pages, images, and data belong to their
-upstream owners. dradar2 stores and re-displays those observations with attribution and does not
+upstream owners. codex-dradar-history stores and re-displays those observations with attribution and does not
 claim ownership of upstream content.
