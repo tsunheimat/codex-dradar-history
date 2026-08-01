@@ -62,6 +62,8 @@ test('patchDengHtml: API base + localhost override + backlink + timebar injectio
   assert.ok(out.indexOf('id="matrix-tools" hidden') < out.indexOf('document.getElementById("copy-setup-prompt")'),
     'compatibility controls appear before the inline page script initializes');
   assert.ok(out.includes('id="copy-setup-prompt" hidden'), 'removed participation control has an inert target');
+  assert.ok(out.includes('id="lt-history" hidden'),
+    'removed contributor history tab has an inert target for newer upstream scripts');
   assert.ok(out.includes('if (document.getElementById("matrix-tools").hidden) return;'),
     'table rendering exits after updating the summary widgets');
   assert.ok(!out.includes('id="contributors"'), 'contributor ladder section removed');

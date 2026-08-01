@@ -30,7 +30,8 @@ const DENG_MATRIX_COMPAT = `<div id="matrix-tools" hidden aria-hidden="true">
   <button id="matrix-reset" type="button"></button><div id="matrix-filter-foot"></div>
 </div><div id="tablebox" hidden aria-hidden="true"></div>
 <div id="contrib-body" hidden></div><button id="lt-month" hidden></button>
-<button id="lt-all" hidden></button><span id="settle-info" hidden></span>
+<button id="lt-all" hidden></button><button id="lt-history" hidden></button>
+<span id="settle-info" hidden></span>
 <button id="copy-setup-prompt" hidden></button>\n`;
 
 /**
