@@ -23,12 +23,14 @@ const DENG_MATRIX_COMPAT = `<div id="matrix-tools" hidden aria-hidden="true">
   <select id="matrix-status"><option value="all"></option></select>
   <select id="matrix-model"><option value="all"></option></select>
   <select id="matrix-effort"><option value="all"></option></select>
-  <button id="matrix-more" type="button"></button><button id="model-config-toggle" type="button"></button>
+  <button id="matrix-more" type="button"></button><button id="matrix-deepseek-cue" type="button"></button>
+  <button id="model-config-toggle" type="button"></button>
   <div id="matrix-advanced" hidden></div>
   <input id="matrix-claimer"><select id="matrix-result"><option value="all"></option></select>
   <input id="matrix-pct-min"><input id="matrix-pct-max"><input id="matrix-mult-min"><input id="matrix-mult-max">
   <button id="matrix-reset" type="button"></button><div id="matrix-filter-foot"></div>
 </div><div id="tablebox" hidden aria-hidden="true"></div>
+<div id="efficiency-charts" hidden aria-hidden="true"></div>
 <div id="contrib-body" hidden></div><button id="lt-month" hidden></button>
 <button id="lt-all" hidden></button><button id="lt-history" hidden></button>
 <span id="settle-info" hidden></span>
@@ -151,6 +153,14 @@ export function patchDengHtml(html, ctx) {
   // data source is not replayed by this archive. Leaving it in the page shell
   // produces a permanent "正在读取价格、耗时与 IQ……" placeholder.
   out = out.replace(/\s*<section\s+class="efficiency"(?=[\s>])[\s\S]*?<\/section>\s*/i, "\n");
+
+  // Newer upstream shells render "全站看板" as the first card inside
+  // #iq-body. Drop only that card from the assembled markup; the per-model IQ
+  // cards still render normally.
+  out = out.replace(
+    /(document\.getElementById\("iq-body"\)\.innerHTML\s*=\s*)dashboardCard\s*\+\s*/,
+    "$1"
+  );
 
   // Remove the complete contributor ladder and its hero jump link. Aggregate
   // leaderboard totals remain available to the upper IQ footer via /summary.

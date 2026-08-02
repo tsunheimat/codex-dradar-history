@@ -64,6 +64,10 @@ test('patchDengHtml: API base + localhost override + backlink + timebar injectio
   assert.ok(out.includes('id="copy-setup-prompt" hidden'), 'removed participation control has an inert target');
   assert.ok(out.includes('id="lt-history" hidden'),
     'removed contributor history tab has an inert target for newer upstream scripts');
+  assert.ok(out.includes('id="matrix-deepseek-cue"'),
+    'removed DeepSeek matrix cue has an inert event target');
+  assert.ok(out.includes('id="efficiency-charts" hidden'),
+    'removed efficiency dashboard has an inert render target');
   assert.ok(out.includes('if (document.getElementById("matrix-tools").hidden) return;'),
     'table rendering exits after updating the summary widgets');
   assert.ok(!out.includes('id="contributors"'), 'contributor ladder section removed');
@@ -86,6 +90,18 @@ test('patchDengHtml: warning injected when the API patch cannot match', () => {
   const out = patchDengHtml(html, { feedId: 'deng:html', capturedAt: '2026-07-31T00:00:00.000Z', at: null });
   assert.equal(out.split('/__archive/timebar.js').length - 1, 1, 'timebar still injected once');
   assert.ok(out.includes('__DRADAR_PATCH_WARNING'), 'warning flag added when API patch fails');
+});
+
+test('patchDengHtml: removes the newer all-site dashboard card without blocking IQ rendering', () => {
+  const html = '<html><head></head><body><script>' +
+    'var API = "https://api." + apex;' +
+    'document.getElementById("iq-body").innerHTML = dashboardCard + modelCards + compactCard;' +
+    '</script></body></html>';
+  const out = patchDengHtml(html, {
+    feedId: 'deng:html', capturedAt: '2026-08-02T00:00:00.000Z', at: null
+  });
+  assert.ok(!out.includes('= dashboardCard +'), 'all-site dashboard card removed');
+  assert.ok(out.includes('innerHTML = modelCards + compactCard'), 'model IQ cards still render');
 });
 
 test('patchCodexHtml: timebar injected + deng backlink rewritten', () => {
