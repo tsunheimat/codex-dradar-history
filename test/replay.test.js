@@ -69,6 +69,8 @@ test('patchDengHtml: API base + localhost override + backlink + timebar injectio
   assert.ok(!out.includes('id="contributors"'), 'contributor ladder section removed');
   assert.ok(!out.includes('class="hero-link ladder-link"'), 'ladder tab removed');
   assert.ok(!out.includes('assets/radar-report.js'), 'report asset removed with ladder/matrix UI');
+  assert.ok(!out.includes('<section class="efficiency"'), 'live efficiency dashboard removed');
+  assert.ok(!out.includes('正在读取价格、耗时与 IQ'), 'stale efficiency loading placeholder removed');
   assert.ok(out.includes('/api/v1/summary'), 'upper IQ footer uses aggregate summary data');
 
   // Runtime backlink re-derivation neutralized: syncMainSiteLinks() must not be

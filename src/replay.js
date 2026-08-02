@@ -147,6 +147,11 @@ export function patchDengHtml(html, ctx) {
     out = out.replace(/(<body[^>]*>)/i, "$1" + DENG_MATRIX_COMPAT);
   }
 
+  // The upstream "智力效率" / 全站看板 is a separate live dashboard whose
+  // data source is not replayed by this archive. Leaving it in the page shell
+  // produces a permanent "正在读取价格、耗时与 IQ……" placeholder.
+  out = out.replace(/\s*<section\s+class="efficiency"(?=[\s>])[\s\S]*?<\/section>\s*/i, "\n");
+
   // Remove the complete contributor ladder and its hero jump link. Aggregate
   // leaderboard totals remain available to the upper IQ footer via /summary.
   out = out.replace(/\s*<section id="contributors">[\s\S]*?<\/section>\s*/i, "\n");
